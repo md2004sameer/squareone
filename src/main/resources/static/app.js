@@ -42,16 +42,22 @@ function showToast(message) {
 }
 
 async function request(url, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = {
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...options.headers,
+  };
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
+    method,
+    headers,
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed (${response.status})`);
+    const error = new Error(`Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
 
   if (response.status === 204) {

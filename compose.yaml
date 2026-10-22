@@ -4,5 +4,10 @@ services:
       context: .
     image: squareone:latest
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    volumes:
+      - squareone-data:/data
     restart: unless-stopped
+
+volumes:
+  squareone-data:

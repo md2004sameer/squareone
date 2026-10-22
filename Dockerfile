@@ -21,10 +21,12 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN addgroup -S spring && adduser -S spring -G spring && mkdir -p /data && chown spring:spring /data
 COPY --from=build --chown=spring:spring /workspace/app.jar /app/app.jar
 
 USER spring:spring
+
+ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/data/squareone
 
 EXPOSE 8080
 
