@@ -49,6 +49,10 @@ public class DocumentController {
         URI location = URI.create("/api/documents/" + document.getId());
         return ResponseEntity.created(location).body(document);
     }
+    @GetMapping("/health")
+    public String health() {
+    return "OK";
+    }
 
     @GetMapping
     public List<Document> getAllDocuments() {
