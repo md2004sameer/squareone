@@ -40,4 +40,4 @@ The local H2 database is written to `./data/squareone`.
 
 ## Developer documentation
 
-- [Backend class diagram](docs/class-diagram.md) — rendered automatically on GitHub and in the VS Code Markdown preview.
+- [System architecture diagrams](docs/architecture.md) — browser, backend, database, export, and sharing flows; rendered on GitHub and in the VS Code Markdown preview.\n- [Backend class diagram](docs/class-diagram.md) — classes and their relationships.
