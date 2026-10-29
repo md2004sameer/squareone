@@ -37,3 +37,7 @@ mkdir -p data
 ```
 
 The local H2 database is written to `./data/squareone`.
+
+## Developer documentation
+
+- [Backend class diagram](docs/class-diagram.md) — rendered automatically on GitHub and in the VS Code Markdown preview.
