@@ -1,4 +1,4 @@
-import { Editor } from "https://esm.sh/@tiptap/core@2.11.5";
+import { Editor, mergeAttributes, Node } from "https://esm.sh/@tiptap/core@2.11.5";
 import StarterKit from "https://esm.sh/@tiptap/starter-kit@2.11.5";
 import Underline from "https://esm.sh/@tiptap/extension-underline@2.11.5";
 import Link from "https://esm.sh/@tiptap/extension-link@2.11.5";
@@ -6,6 +6,8 @@ import TextStyle from "https://esm.sh/@tiptap/extension-text-style@2.11.5";
 import Color from "https://esm.sh/@tiptap/extension-color@2.11.5";
 import Highlight from "https://esm.sh/@tiptap/extension-highlight@2.11.5";
 import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@2.11.5";
+import TaskList from "https://esm.sh/@tiptap/extension-task-list@2.11.5";
+import TaskItem from "https://esm.sh/@tiptap/extension-task-item@2.11.5";
 
 const API_URL = "/api/documents";
 const SAVE_DELAY = 650;
@@ -14,6 +16,92 @@ const LOCAL_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SIDEBAR_WIDTH_KEY = "squareone.sidebar-width.v1";
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 420;
+
+const Callout = Node.create({
+  name: "callout",
+  group: "block",
+  content: "block+",
+  defining: true,
+  parseHTML() {
+    return [{ tag: 'div[data-type="callout"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "callout" }), 0];
+  },
+});
+
+const slashCommands = [
+  {
+    title: "Heading 1",
+    icon: "H1",
+    description: "Large section heading",
+    keywords: "heading title h1",
+    command: (chain) => chain.setNode("heading", { level: 1 }),
+  },
+  {
+    title: "Heading 2",
+    icon: "H2",
+    description: "Medium section heading",
+    keywords: "heading h2",
+    command: (chain) => chain.setNode("heading", { level: 2 }),
+  },
+  {
+    title: "Heading 3",
+    icon: "H3",
+    description: "Small section heading",
+    keywords: "heading h3",
+    command: (chain) => chain.setNode("heading", { level: 3 }),
+  },
+  {
+    title: "Bullet List",
+    icon: "•",
+    description: "Create a simple list",
+    keywords: "bullet bulleted list unordered",
+    command: (chain) => chain.toggleBulletList(),
+  },
+  {
+    title: "Numbered List",
+    icon: "1.",
+    description: "Create a numbered list",
+    keywords: "numbered ordered list",
+    command: (chain) => chain.toggleOrderedList(),
+  },
+  {
+    title: "To-do List",
+    icon: "☐",
+    description: "Track tasks with a checklist",
+    keywords: "todo to-do task checklist",
+    command: (chain) => chain.toggleTaskList(),
+  },
+  {
+    title: "Quote",
+    icon: "“",
+    description: "Capture a quotation",
+    keywords: "quote blockquote",
+    command: (chain) => chain.toggleBlockquote(),
+  },
+  {
+    title: "Code Block",
+    icon: "</>",
+    description: "Display code with formatting",
+    keywords: "code pre",
+    command: (chain) => chain.toggleCodeBlock(),
+  },
+  {
+    title: "Divider",
+    icon: "—",
+    description: "Separate sections with a line",
+    keywords: "divider horizontal rule",
+    command: (chain) => chain.setHorizontalRule(),
+  },
+  {
+    title: "Callout",
+    icon: "✳",
+    description: "Highlight an important note",
+    keywords: "callout note",
+    command: (chain) => chain.wrapIn("callout"),
+  },
+];
 
 const elements = {
   list: document.querySelector("#document-list"),
@@ -35,6 +123,9 @@ const elements = {
   highlightPalette: document.querySelector("#highlight-palette"),
   linkEditor: document.querySelector("#toolbar-link-editor"),
   linkInput: document.querySelector("#toolbar-link-input"),
+  slashMenu: document.querySelector("#slash-command-menu"),
+  slashOptions: document.querySelector("#slash-command-options"),
+  slashEmpty: document.querySelector("#slash-command-empty"),
   breadcrumb: document.querySelector("#breadcrumb-title"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
@@ -98,6 +189,10 @@ let currentUser = { authenticated: false, name: "Guest", email: null, avatar: "G
 let csrfToken = null;
 let csrfHeaderName = "X-XSRF-TOKEN";
 let accountDialogMode = "login";
+let slashRange = null;
+let slashMatches = [];
+let slashActiveIndex = 0;
+let slashQuery = null;
 
 function setSaveStatus(status, text) {
   elements.saveStatus.classList.remove("saving", "error");
@@ -389,7 +484,7 @@ function editorContentFromStored(content) {
   if (!content) {
     return "";
   }
-  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
+  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
     return content;
   }
   return content.split(/\n{2,}/u)
@@ -403,7 +498,7 @@ function contentToPlainText(content) {
   }
 
   const parsed = new DOMParser().parseFromString(content, "text/html");
-  const blockTags = new Set(["BLOCKQUOTE", "H1", "H2", "H3", "LI", "P", "PRE"]);
+  const blockTags = new Set(["BLOCKQUOTE", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "UL"]);
   let text = "";
   const appendLineBreak = () => {
     if (text && !text.endsWith("\n")) {
@@ -721,6 +816,126 @@ function hideFormattingToolbar() {
   toolbarHideTimer = window.setTimeout(() => {
     elements.toolbar.hidden = true;
   }, 140);
+}
+
+function renderSlashOptions(query) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  slashMatches = slashCommands.filter((command) =>
+    `${command.title} ${command.keywords}`.toLocaleLowerCase().includes(normalizedQuery),
+  );
+  slashActiveIndex = Math.min(slashActiveIndex, slashMatches.length - 1);
+  elements.slashOptions.replaceChildren();
+  elements.slashEmpty.hidden = slashMatches.length > 0;
+
+  slashMatches.forEach((command, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.id = `slash-command-option-${index}`;
+    option.className = "slash-command-option";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(index === slashActiveIndex));
+    option.dataset.commandIndex = String(index);
+
+    const icon = document.createElement("span");
+    icon.className = "slash-command-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = command.icon;
+
+    const copy = document.createElement("span");
+    copy.className = "slash-command-copy";
+    const title = document.createElement("span");
+    title.className = "slash-command-title";
+    title.textContent = command.title;
+    const description = document.createElement("span");
+    description.className = "slash-command-description";
+    description.textContent = command.description;
+    copy.append(title, description);
+    option.append(icon, copy);
+    elements.slashOptions.append(option);
+  });
+
+  if (slashMatches.length > 0) {
+    elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
+  } else {
+    elements.content.removeAttribute("aria-activedescendant");
+  }
+}
+
+function positionSlashMenu() {
+  if (!slashRange || !textEditor) {
+    return;
+  }
+  const caret = textEditor.view.coordsAtPos(textEditor.state.selection.from);
+  const bounds = elements.slashMenu.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.max(padding, Math.min(caret.left, window.innerWidth - bounds.width - padding));
+  const below = caret.bottom + 8;
+  const top = below + bounds.height <= window.innerHeight - padding
+    ? below
+    : Math.max(padding, caret.top - bounds.height - 8);
+  elements.slashMenu.style.left = `${left}px`;
+  elements.slashMenu.style.top = `${top}px`;
+}
+
+function closeSlashMenu() {
+  slashRange = null;
+  slashMatches = [];
+  slashQuery = null;
+  elements.slashMenu.hidden = true;
+  elements.content.setAttribute("aria-expanded", "false");
+  elements.content.removeAttribute("aria-activedescendant");
+}
+
+function syncSlashMenu() {
+  if (!textEditor || !textEditor.isFocused || !textEditor.state.selection.empty) {
+    closeSlashMenu();
+    return;
+  }
+  const selection = textEditor.state.selection;
+  const textBeforeCursor = selection.$from.parent.textBetween(0, selection.$from.parentOffset, "\n", "\ufffc");
+  const trigger = /(^|\s)\/([^\n]*)$/u.exec(textBeforeCursor);
+  if (!trigger) {
+    closeSlashMenu();
+    return;
+  }
+
+  slashRange = {
+    from: selection.$from.start() + trigger.index + trigger[1].length,
+    to: selection.from,
+  };
+  if (trigger[2] !== slashQuery) {
+    slashActiveIndex = 0;
+    slashQuery = trigger[2];
+  }
+  elements.slashMenu.hidden = false;
+  elements.content.setAttribute("aria-expanded", "true");
+  renderSlashOptions(trigger[2]);
+  positionSlashMenu();
+}
+
+function moveSlashSelection(offset) {
+  if (slashMatches.length === 0) {
+    return;
+  }
+  slashActiveIndex = (slashActiveIndex + offset + slashMatches.length) % slashMatches.length;
+  elements.slashOptions.querySelectorAll(".slash-command-option").forEach((option, index) => {
+    option.setAttribute("aria-selected", String(index === slashActiveIndex));
+  });
+  elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
+  elements.slashOptions.children[slashActiveIndex].scrollIntoView({ block: "nearest" });
+}
+
+function runSlashCommand(index) {
+  const command = slashMatches[index];
+  if (!command || !slashRange) {
+    return;
+  }
+  const range = slashRange;
+  closeSlashMenu();
+  const chain = textEditor.chain().focus().deleteRange(range);
+  if (!command.command(chain).run()) {
+    showToast(`Couldn't insert ${command.title.toLocaleLowerCase()} here.`);
+  }
 }
 
 function positionFormattingToolbar() {
@@ -1322,17 +1537,22 @@ document.addEventListener("click", (event) => {
 elements.search.addEventListener("input", renderList);
 elements.title.addEventListener("input", scheduleSave);
 bindFormattingToolbar();
+elements.slashMenu.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".slash-command-option")) {
+    event.preventDefault();
+  }
+});
+elements.slashMenu.addEventListener("click", (event) => {
+  const option = event.target.closest(".slash-command-option");
+  if (option) {
+    runSlashCommand(Number(option.dataset.commandIndex));
+  }
+});
 textEditor = new Editor({
   element: elements.content,
   extensions: [
     StarterKit.configure({
-      blockquote: false,
-      bulletList: false,
-      codeBlock: false,
       heading: { levels: [1, 2, 3] },
-      horizontalRule: false,
-      listItem: false,
-      orderedList: false,
     }),
     Underline,
     Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
@@ -1340,6 +1560,9 @@ textEditor = new Editor({
     Color.configure({ types: ["textStyle"] }),
     Highlight.configure({ multicolor: true }),
     Placeholder.configure({ placeholder: "Begin with a thought..." }),
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    Callout,
   ],
   editorProps: {
     attributes: {
@@ -1350,6 +1573,28 @@ textEditor = new Editor({
       spellcheck: "true",
     },
     handleKeyDown(_view, event) {
+      if (slashRange) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          moveSlashSelection(1);
+          return true;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveSlashSelection(-1);
+          return true;
+        }
+        if (event.key === "Enter" && slashMatches.length > 0) {
+          event.preventDefault();
+          runSlashCommand(slashActiveIndex);
+          return true;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeSlashMenu();
+          return true;
+        }
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         if (textEditor.state.selection.empty && !textEditor.isActive("link")) {
           return false;
@@ -1364,13 +1609,23 @@ textEditor = new Editor({
   onUpdate() {
     updateWordCount();
     scheduleSave();
+    syncSlashMenu();
   },
-  onSelectionUpdate: updateFormattingToolbar,
-  onFocus: updateFormattingToolbar,
+  onSelectionUpdate() {
+    updateFormattingToolbar();
+    syncSlashMenu();
+  },
+  onFocus() {
+    updateFormattingToolbar();
+    syncSlashMenu();
+  },
   onBlur() {
     window.setTimeout(() => {
       if (!elements.toolbar.contains(document.activeElement)) {
         hideFormattingToolbar();
+      }
+      if (!elements.slashMenu.contains(document.activeElement)) {
+        closeSlashMenu();
       }
     }, 0);
   },
@@ -1380,10 +1635,16 @@ window.addEventListener("resize", () => {
   if (!elements.toolbar.hidden) {
     positionFormattingToolbar();
   }
+  if (!elements.slashMenu.hidden) {
+    positionSlashMenu();
+  }
 });
 window.addEventListener("scroll", () => {
   if (!elements.toolbar.hidden) {
     positionFormattingToolbar();
+  }
+  if (!elements.slashMenu.hidden) {
+    positionSlashMenu();
   }
 }, true);
 
@@ -1392,7 +1653,11 @@ document.addEventListener("keydown", (event) => {
   if (modifier && event.key.toLocaleLowerCase() === "n") {
     event.preventDefault();
     void createDocument();
-  } else if (event.key === "/" && document.activeElement !== elements.search) {
+  } else if (
+    event.key === "/"
+    && document.activeElement !== elements.search
+    && !elements.content.contains(document.activeElement)
+  ) {
     event.preventDefault();
     elements.search.focus();
   } else if (event.key === "Escape" && document.activeElement === elements.search) {

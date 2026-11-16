@@ -7,6 +7,10 @@
   --accent: #617459;
   --accent-dark: #4c6045;
   --accent-soft: #edf1e9;
+  --floating-bg: #fff;
+  --floating-border: #e6e7e1;
+  --floating-hover: #f0f1ed;
+  --block-surface: #f4f4f0;
   --serif: "DM Serif Display", Georgia, serif;
   --sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -1185,6 +1189,79 @@ kbd {
   border-radius: 2px;
 }
 
+.tiptap-content blockquote {
+  margin: 0 0 1em;
+  padding: 2px 0 2px 1em;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+
+.tiptap-content ul,
+.tiptap-content ol {
+  margin: 0 0 1em;
+  padding-left: 1.6em;
+}
+
+.tiptap-content ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.tiptap-content li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tiptap-content li[data-type="taskItem"] > label {
+  flex: none;
+  padding-top: 5px;
+}
+
+.tiptap-content li[data-type="taskItem"] > label input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.tiptap-content li[data-type="taskItem"] > div {
+  flex: 1;
+}
+
+.tiptap-content pre {
+  margin: 0 0 1em;
+  padding: 14px 16px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--block-surface);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.tiptap-content pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9em;
+}
+
+.tiptap-content hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.tiptap-content [data-type="callout"] {
+  margin-bottom: 1em;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--block-surface);
+}
+
+.tiptap-content [data-type="callout"] > :last-child {
+  margin-bottom: 0;
+}
+
 .formatting-toolbar {
   position: fixed;
   z-index: 20;
@@ -1193,15 +1270,102 @@ kbd {
   gap: 4px;
   max-width: calc(100vw - 24px);
   padding: 5px;
-  border: 1px solid #e6e7e1;
+  border: 1px solid var(--floating-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--floating-bg);
   box-shadow: 0 8px 26px #2527221c, 0 1px 3px #25272212;
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px) scale(0.98);
   transition: opacity 120ms ease, transform 120ms ease;
   white-space: nowrap;
+}
+
+.slash-command-menu {
+  position: fixed;
+  z-index: 30;
+  width: min(300px, calc(100vw - 24px));
+  max-height: min(390px, calc(100vh - 24px));
+  padding: 7px;
+  overflow-y: auto;
+  border: 1px solid var(--floating-border);
+  border-radius: 10px;
+  background: var(--floating-bg);
+  box-shadow: 0 12px 32px #2527221c, 0 2px 5px #25272210;
+}
+
+.slash-command-menu[hidden] {
+  display: none;
+}
+
+.slash-command-heading {
+  margin: 5px 8px 7px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+
+.slash-command-options {
+  display: grid;
+  gap: 2px;
+}
+
+.slash-command-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.slash-command-option:hover,
+.slash-command-option:focus-visible,
+.slash-command-option[aria-selected="true"] {
+  outline: none;
+  background: var(--floating-hover);
+}
+
+.slash-command-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--floating-border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.slash-command-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.slash-command-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slash-command-description {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.slash-command-empty {
+  margin: 10px 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .formatting-toolbar.visible {
@@ -1606,6 +1770,10 @@ kbd {
     --accent: #a0b393;
     --accent-dark: #afc3a2;
     --accent-soft: #30372e;
+    --floating-bg: #292a26;
+    --floating-border: #44463f;
+    --floating-hover: #3a3c35;
+    --block-surface: #2b2c27;
   }
 
   body,
@@ -1850,10 +2018,21 @@ kbd {
   }
 
   .formatting-toolbar,
-  .toolbar-palette {
-    border-color: #44463f;
-    background: #292a26;
+  .toolbar-palette,
+  .slash-command-menu {
+    border-color: var(--floating-border);
+    background: var(--floating-bg);
     box-shadow: 0 8px 26px #0007, 0 1px 3px #0005;
+  }
+
+  .slash-command-option {
+    color: #e6e7e1;
+  }
+
+  .slash-command-option:hover,
+  .slash-command-option:focus-visible,
+  .slash-command-option[aria-selected="true"] {
+    background: var(--floating-hover);
   }
 
   .toolbar-button {

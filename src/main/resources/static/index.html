@@ -13,8 +13,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/stylesdocs.css?v=13" />
-    <script type="module" src="/appdocs.js?v=12"></script>
+    <link rel="stylesheet" href="/stylesdocs.css?v=14" />
+    <script type="module" src="/appdocs.js?v=13"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -195,6 +195,11 @@
               <button type="submit">Apply</button>
               <button type="button" data-action="remove-link">Remove</button>
             </form>
+          </div>
+          <div class="slash-command-menu" id="slash-command-menu" role="listbox" aria-label="Block commands" hidden>
+            <p class="slash-command-heading">BASIC BLOCKS</p>
+            <div class="slash-command-options" id="slash-command-options"></div>
+            <p class="slash-command-empty" id="slash-command-empty" hidden>No matching commands</p>
           </div>
         </section>
         <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">

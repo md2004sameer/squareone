@@ -12,7 +12,7 @@ import javax.swing.text.html.parser.ParserDelegator;
 public final class DocumentContentText {
 
     private static final Pattern RICH_TEXT_TAG = Pattern.compile(
-            "</?(?:p|h[1-3]|blockquote|pre|ul|ol|li|strong|b|em|i|u|s|del|code|mark|span|a|br)\\b[^>]*>",
+            "</?(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|hr|strong|b|em|i|u|s|del|code|mark|span|a|br)\\b[^>]*>",
             Pattern.CASE_INSENSITIVE);
 
     private DocumentContentText() {
@@ -43,6 +43,8 @@ public final class DocumentContentText {
             @Override
             public void handleSimpleTag(HTML.Tag tag, MutableAttributeSet attributes, int position) {
                 if (tag == HTML.Tag.BR) {
+                    appendLineBreak();
+                } else if (tag == HTML.Tag.HR) {
                     appendLineBreak();
                 }
             }
