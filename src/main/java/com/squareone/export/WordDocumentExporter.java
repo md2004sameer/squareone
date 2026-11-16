@@ -9,6 +9,7 @@ import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Component;
 
 import com.squareone.model.Document;
+import com.squareone.util.DocumentContentText;
 
 @Component
 public class WordDocumentExporter implements DocumentExporter {
@@ -104,7 +105,7 @@ public class WordDocumentExporter implements DocumentExporter {
         StringBuilder body = new StringBuilder();
         body.append(paragraph("Title", document.getTitle()));
         body.append(paragraph("Subtitle", "A document from Squareone"));
-        for (String line : document.getContent().split("\\R", -1)) {
+        for (String line : DocumentContentText.toPlainText(document.getContent()).split("\\R", -1)) {
             body.append(paragraph("Normal", line));
         }
         return """

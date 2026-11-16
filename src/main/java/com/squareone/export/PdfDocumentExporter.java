@@ -11,6 +11,7 @@ import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 import com.squareone.model.Document;
+import com.squareone.util.DocumentContentText;
 
 @Component
 public class PdfDocumentExporter implements DocumentExporter {
@@ -61,7 +62,8 @@ public class PdfDocumentExporter implements DocumentExporter {
                 + " m 537 " + (titleY - 9) + " l S Q");
         int bodyY = titleY - 62;
 
-        for (String line : wrapText(pdfText(document.getContent()), MAX_BODY_LINE_LENGTH)) {
+        String content = DocumentContentText.toPlainText(document.getContent());
+        for (String line : wrapText(pdfText(content), MAX_BODY_LINE_LENGTH)) {
             if (bodyY < PAGE_MARGIN + BODY_LINE_HEIGHT) {
                 pages.add(currentPage);
                 currentPage = createContinuationPage(document.getTitle());

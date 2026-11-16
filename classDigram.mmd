@@ -1,0 +1,139 @@
+
+classDiagram
+direction TB
+
+class SquareoneApplication {
+  +main(args) void
+}
+
+class DocumentController {
+  -DocumentService documentService
+  -DocumentExportService documentExportService
+  -WhatsAppShareService whatsAppShareService
+  +createDocument() ResponseEntity
+  +health() String
+  +getAllDocuments() List~Document~
+  +getDocument(id) Document
+  +updateDocument(id, request) Document
+  +deleteDocument(id) ResponseEntity
+  +exportDocument(id, format) ResponseEntity
+  +createWhatsAppShare(id) WhatsAppShareResponse
+  +handleDocumentNotFound() ResponseEntity
+}
+
+class DocumentRequest {
+  <<record>>
+  +String title
+  +String content
+}
+
+class WhatsAppShareResponse {
+  <<record>>
+  +String shareUrl
+}
+
+class Document {
+  <<JPA Entity>>
+  -String id
+  -String title
+  -String content
+  -long createdAt
+  -long updatedAt
+  +Document()
+  +getId() String
+  +getTitle() String
+  +setTitle(title) void
+  +getContent() String
+  +setContent(content) void
+  +getCreatedAt() long
+  +getUpdatedAt() long
+  +setUpdatedAt(time) void
+}
+
+class DocumentRepository {
+  <<interface>>
+}
+
+class JpaRepository {
+  <<Spring Data JPA>>
+}
+
+class DocumentService {
+  -DocumentRepository documentRepository
+  +createDocument() Document
+  +getAllDocuments() List~Document~
+  +getDocument(id) Document
+  +updateDocument(id, title, content) Document
+  +deleteDocument(id) void
+}
+
+class DocumentExportService {
+  -DocumentService documentService
+  -Map exporters
+  +export(documentId, format) ExportedDocument
+}
+
+class ExportedDocument {
+  <<record>>
+  +String filename
+  +String contentType
+  +byte[] content
+}
+
+class WhatsAppShareService {
+  -DocumentService documentService
+  +createShareUrl(documentId) String
+}
+
+class DocumentExporter {
+  <<interface>>
+  +format() String
+  +contentType() String
+  +fileExtension() String
+  +export(document) byte[]
+}
+
+class PdfDocumentExporter {
+  -createPages(document) List
+  -createPdfObjects(pages) List
+  -writePdf(objects) byte[]
+  +format() String
+  +contentType() String
+  +fileExtension() String
+  +export(document) byte[]
+}
+
+class PlainTextDocumentExporter {
+  +format() String
+  +contentType() String
+  +fileExtension() String
+  +export(document) byte[]
+}
+
+class WordDocumentExporter {
+  -documentXml(document) String
+  -stylesXml() String
+  -xmlEscape(text) String
+  +format() String
+  +contentType() String
+  +fileExtension() String
+  +export(document) byte[]
+}
+
+DocumentRepository ..|> JpaRepository : extends
+DocumentService --> DocumentRepository : persistence
+DocumentService ..> Document : creates and updates
+DocumentController --> DocumentService : document operations
+DocumentController --> DocumentExportService : export endpoint
+DocumentController --> WhatsAppShareService : sharing endpoint
+DocumentController ..> DocumentRequest : accepts
+DocumentController ..> WhatsAppShareResponse : returns
+DocumentController ..> Document : response body
+DocumentExportService --> DocumentService : loads document
+DocumentExportService --> DocumentExporter : format registry
+DocumentExportService ..> ExportedDocument : returns
+WhatsAppShareService --> DocumentService : loads document
+DocumentExporter ..> Document : exports
+PdfDocumentExporter ..|> DocumentExporter
+PlainTextDocumentExporter ..|> DocumentExporter
+WordDocumentExporter ..|> DocumentExporter

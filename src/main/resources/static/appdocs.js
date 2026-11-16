@@ -1,6 +1,15 @@
+import { Editor } from "https://esm.sh/@tiptap/core@2.11.5";
+import StarterKit from "https://esm.sh/@tiptap/starter-kit@2.11.5";
+import Underline from "https://esm.sh/@tiptap/extension-underline@2.11.5";
+import Link from "https://esm.sh/@tiptap/extension-link@2.11.5";
+import TextStyle from "https://esm.sh/@tiptap/extension-text-style@2.11.5";
+import Color from "https://esm.sh/@tiptap/extension-color@2.11.5";
+import Highlight from "https://esm.sh/@tiptap/extension-highlight@2.11.5";
+import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@2.11.5";
+
 const API_URL = "/api/documents";
 const SAVE_DELAY = 650;
-const LOCAL_DRAFT_PREFIX = "squareone.document-draft.v1:";
+const LOCAL_DRAFT_PREFIX = "squareone.document-draft.v2:";
 const LOCAL_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SIDEBAR_WIDTH_KEY = "squareone.sidebar-width.v1";
 const MIN_SIDEBAR_WIDTH = 220;
@@ -21,6 +30,11 @@ const elements = {
   editor: document.querySelector("#editor"),
   title: document.querySelector("#title-input"),
   content: document.querySelector("#content-input"),
+  toolbar: document.querySelector("#formatting-toolbar"),
+  textColorPalette: document.querySelector("#text-color-palette"),
+  highlightPalette: document.querySelector("#highlight-palette"),
+  linkEditor: document.querySelector("#toolbar-link-editor"),
+  linkInput: document.querySelector("#toolbar-link-input"),
   breadcrumb: document.querySelector("#breadcrumb-title"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
@@ -33,6 +47,39 @@ const elements = {
   appShell: document.querySelector(".app-shell"),
   sidebar: document.querySelector(".sidebar"),
   sidebarResizeHandle: document.querySelector("#sidebar-resize-handle"),
+  accountMenu: document.querySelector("#account-menu"),
+  accountMenuTrigger: document.querySelector("#account-menu-trigger"),
+  accountMenuPanel: document.querySelector("#account-menu-panel"),
+  accountAvatar: document.querySelector("#account-avatar"),
+  accountMenuName: document.querySelector("#account-menu-name"),
+  accountMenuEmail: document.querySelector("#account-menu-email"),
+  accountProfile: document.querySelector("#account-profile"),
+  accountSettings: document.querySelector("#account-settings"),
+  accountLogin: document.querySelector("#account-login"),
+  accountLogout: document.querySelector("#account-logout"),
+  accountDialog: document.querySelector("#account-dialog"),
+  accountDialogEyebrow: document.querySelector("#account-dialog-eyebrow"),
+  accountDialogTitle: document.querySelector("#account-dialog-title"),
+  accountDialogCopy: document.querySelector("#account-dialog-copy"),
+  accountDialogClose: document.querySelector("#account-dialog-close"),
+  accountForm: document.querySelector("#account-form"),
+  accountNameField: document.querySelector("#account-name-field"),
+  accountNameInput: document.querySelector("#account-name-input"),
+  accountEmailField: document.querySelector("#account-email-field"),
+  accountEmailInput: document.querySelector("#account-email-input"),
+  accountPasswordField: document.querySelector("#account-password-field"),
+  accountPasswordInput: document.querySelector("#account-password-input"),
+  accountAvatarColorField: document.querySelector("#account-avatar-color-field"),
+  accountAvatarColorInput: document.querySelector("#account-avatar-color-input"),
+  accountCurrentPasswordField: document.querySelector("#account-current-password-field"),
+  accountCurrentPasswordInput: document.querySelector("#account-current-password-input"),
+  accountNewPasswordField: document.querySelector("#account-new-password-field"),
+  accountNewPasswordInput: document.querySelector("#account-new-password-input"),
+  accountFormError: document.querySelector("#account-form-error"),
+  accountSubmit: document.querySelector("#account-submit"),
+  accountModeToggle: document.querySelector("#account-mode-toggle"),
+  accountGuestContinue: document.querySelector("#account-guest-continue"),
+  sidebarFooterCopy: document.querySelector("#sidebar-footer-copy"),
 };
 
 let documents = [];
@@ -44,6 +91,13 @@ let localDraftWarningShown = false;
 let sidebarResizePointerId = null;
 let sidebarWidth = 278;
 let documentOpenRequest = 0;
+let textEditor = null;
+let toolbarHideTimer = null;
+let toolbarPositionFrame = null;
+let currentUser = { authenticated: false, name: "Guest", email: null, avatar: "G", avatarColor: "#617459" };
+let csrfToken = null;
+let csrfHeaderName = "X-XSRF-TOKEN";
+let accountDialogMode = "login";
 
 function setSaveStatus(status, text) {
   elements.saveStatus.classList.remove("saving", "error");
@@ -60,6 +114,93 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => elements.toast.classList.remove("visible"), 4000);
 }
 
+function updateAccountMenu() {
+  elements.accountAvatar.textContent = currentUser.avatar || "G";
+  elements.accountAvatar.style.backgroundColor = currentUser.avatarColor || "#617459";
+  elements.accountMenuName.textContent = currentUser.name || "Guest";
+  elements.accountMenuEmail.textContent = currentUser.authenticated
+    ? currentUser.email
+    : "Private guest space";
+  elements.accountProfile.hidden = !currentUser.authenticated;
+  elements.accountSettings.hidden = !currentUser.authenticated;
+  elements.accountLogin.hidden = currentUser.authenticated;
+  elements.accountLogout.hidden = !currentUser.authenticated;
+  elements.sidebarFooterCopy.textContent = currentUser.authenticated
+    ? "Your notes, just yours."
+    : "Your private guest space.";
+}
+
+function setAccountField(field, input, visible, required = false) {
+  field.hidden = !visible;
+  input.disabled = !visible;
+  input.required = visible && required;
+}
+
+function showAccountDialog(mode) {
+  accountDialogMode = mode;
+  elements.accountFormError.hidden = true;
+  elements.accountFormError.textContent = "";
+  const isLogin = mode === "login";
+  const isSignup = mode === "signup";
+  const isProfile = mode === "profile";
+  const isSettings = mode === "settings";
+
+  elements.accountDialogEyebrow.textContent = isProfile || isSettings ? "Your account" : "Your Squareone";
+  elements.accountDialogTitle.textContent = {
+    login: "Log in",
+    signup: "Create your account",
+    profile: "Profile",
+    settings: "Settings",
+  }[mode];
+  elements.accountDialogCopy.textContent = {
+    login: "Log in to bring your notes with you anywhere.",
+    signup: "Your guest notes will move safely into your new account.",
+    profile: "Update the name, email, and avatar for your account.",
+    settings: "Change your password to keep your account secure.",
+  }[mode];
+  elements.accountSubmit.textContent = {
+    login: "Log in",
+    signup: "Create account",
+    profile: "Save profile",
+    settings: "Update password",
+  }[mode];
+  setAccountField(elements.accountNameField, elements.accountNameInput, isSignup || isProfile, isSignup || isProfile);
+  setAccountField(elements.accountEmailField, elements.accountEmailInput, isLogin || isSignup || isProfile, isLogin || isSignup || isProfile);
+  setAccountField(elements.accountPasswordField, elements.accountPasswordInput, isLogin || isSignup, isLogin || isSignup);
+  setAccountField(elements.accountAvatarColorField, elements.accountAvatarColorInput, isProfile);
+  setAccountField(elements.accountCurrentPasswordField, elements.accountCurrentPasswordInput, isSettings, isSettings);
+  setAccountField(elements.accountNewPasswordField, elements.accountNewPasswordInput, isSettings, isSettings);
+  elements.accountModeToggle.hidden = !isLogin && !isSignup;
+  elements.accountGuestContinue.hidden = !isLogin && !isSignup;
+  elements.accountModeToggle.textContent = isLogin
+    ? "New here? Create an account"
+    : "Already have an account? Log in";
+
+  if (isProfile) {
+    elements.accountNameInput.value = currentUser.name || "";
+    elements.accountEmailInput.value = currentUser.email || "";
+    elements.accountAvatarColorInput.value = currentUser.avatarColor || "#617459";
+  }
+  if (isSettings) {
+    elements.accountCurrentPasswordInput.value = "";
+    elements.accountNewPasswordInput.value = "";
+  }
+  if (!elements.accountDialog.open) {
+    elements.accountDialog.showModal();
+  }
+  elements.accountDialog.querySelector("input:not(:disabled)")?.focus();
+}
+
+function showAccountFormError(message) {
+  elements.accountFormError.textContent = message;
+  elements.accountFormError.hidden = false;
+}
+
+function closeAccountMenu() {
+  elements.accountMenuPanel.hidden = true;
+  elements.accountMenuTrigger.setAttribute("aria-expanded", "false");
+}
+
 function reportLocalDraftError(error) {
   if (!localDraftWarningShown) {
     showToast("Browser storage is unavailable. Your local draft may not be saved.");
@@ -70,7 +211,7 @@ function reportLocalDraftError(error) {
 
 function removeLocalDraft(documentId) {
   try {
-    window.localStorage.removeItem(`${LOCAL_DRAFT_PREFIX}${documentId}`);
+    window.localStorage.removeItem(`${localDraftPrefix()}${documentId}`);
   } catch (error) {
     reportLocalDraftError(error);
   }
@@ -79,7 +220,7 @@ function removeLocalDraft(documentId) {
 function saveLocalDraft(document) {
   try {
     window.localStorage.setItem(
-      `${LOCAL_DRAFT_PREFIX}${document.id}`,
+      `${localDraftPrefix()}${document.id}`,
       JSON.stringify({
         title: document.title,
         content: document.content,
@@ -96,7 +237,7 @@ function saveLocalDraft(document) {
 function loadLocalDraft(documentId) {
   let serializedDraft;
   try {
-    serializedDraft = window.localStorage.getItem(`${LOCAL_DRAFT_PREFIX}${documentId}`);
+    serializedDraft = window.localStorage.getItem(`${localDraftPrefix()}${documentId}`);
   } catch (error) {
     reportLocalDraftError(error);
     return null;
@@ -133,14 +274,14 @@ function loadLocalDraft(documentId) {
 
 function loadLocalDraftDocuments() {
   try {
+    const prefix = localDraftPrefix();
     const documentIds = [];
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = window.localStorage.key(index);
-      if (key?.startsWith(LOCAL_DRAFT_PREFIX)) {
-        documentIds.push(key.slice(LOCAL_DRAFT_PREFIX.length));
+      if (key?.startsWith(prefix)) {
+        documentIds.push(key.slice(prefix.length));
       }
     }
-
     return documentIds.flatMap((id) => {
       const draft = loadLocalDraft(id);
       return draft
@@ -153,12 +294,56 @@ function loadLocalDraftDocuments() {
   }
 }
 
+function localDraftPrefix() {
+  const workspaceId = currentUser.workspaceId;
+  return workspaceId ? `${LOCAL_DRAFT_PREFIX}${workspaceId}:` : `${LOCAL_DRAFT_PREFIX}unavailable:`;
+}
+
+function rekeyLocalDrafts(previousWorkspaceId, nextWorkspaceId) {
+  if (!previousWorkspaceId || !nextWorkspaceId || previousWorkspaceId === nextWorkspaceId) {
+    return;
+  }
+  const oldPrefix = `${LOCAL_DRAFT_PREFIX}${previousWorkspaceId}:`;
+  const newPrefix = `${LOCAL_DRAFT_PREFIX}${nextWorkspaceId}:`;
+  try {
+    const oldKeys = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(oldPrefix)) {
+        oldKeys.push(key);
+      }
+    }
+    for (const oldKey of oldKeys) {
+      const newKey = `${newPrefix}${oldKey.slice(oldPrefix.length)}`;
+      const value = window.localStorage.getItem(oldKey);
+      if (value !== null) {
+        window.localStorage.setItem(newKey, value);
+        window.localStorage.removeItem(oldKey);
+      }
+    }
+  } catch (error) {
+    reportLocalDraftError(error);
+  }
+}
+
 async function request(url, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = {
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(options.body && !(options.body instanceof URLSearchParams) ? { "Content-Type": "application/json" } : {}),
     ...options.headers,
   };
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    if (!csrfToken) {
+      const csrfResponse = await fetch("/api/auth/csrf");
+      if (!csrfResponse.ok) {
+        throw new Error("Couldn't prepare a secure request. Please refresh and try again.");
+      }
+      const csrf = await csrfResponse.json();
+      csrfToken = csrf.token;
+      csrfHeaderName = csrf.headerName || csrfHeaderName;
+    }
+    headers[csrfHeaderName] = csrfToken;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -167,15 +352,87 @@ async function request(url, options = {}) {
   });
 
   if (!response.ok) {
-    const error = new Error(`Request failed (${response.status})`);
+    const body = await response.text();
+    let message = `Request failed (${response.status})`;
+    if (body) {
+      try {
+        message = JSON.parse(body).message || message;
+      } catch {
+        message = body;
+      }
+    }
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }
 
+  if (url === "/api/auth/login" || url === "/api/auth/logout") {
+    csrfToken = null;
+  }
   if (response.status === 204) {
     return null;
   }
   return response.json();
+}
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"']/gu, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
+
+function editorContentFromStored(content) {
+  if (!content) {
+    return "";
+  }
+  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
+    return content;
+  }
+  return content.split(/\n{2,}/u)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/gu, "<br>")}</p>`)
+    .join("");
+}
+
+function contentToPlainText(content) {
+  if (!content || !/<[a-z][^>]*>/iu.test(content)) {
+    return content || "";
+  }
+
+  const parsed = new DOMParser().parseFromString(content, "text/html");
+  const blockTags = new Set(["BLOCKQUOTE", "H1", "H2", "H3", "LI", "P", "PRE"]);
+  let text = "";
+  const appendLineBreak = () => {
+    if (text && !text.endsWith("\n")) {
+      text += "\n";
+    }
+  };
+  const visit = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.nodeValue;
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) {
+      return;
+    }
+    const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName);
+    if (isBlock) {
+      appendLineBreak();
+    }
+    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "BR") {
+      appendLineBreak();
+    } else {
+      node.childNodes.forEach(visit);
+    }
+    if (isBlock) {
+      appendLineBreak();
+    }
+  };
+  visit(parsed.body);
+  return text.replace(/^\n+|\n+$/gu, "").replace(/\n{3,}/gu, "\n\n");
 }
 
 function sortDocuments() {
@@ -192,22 +449,25 @@ function showSidebarDocument(documentEntry) {
 function renderSidebarOutline(content) {
   elements.sidebarOutlineList.replaceChildren();
   const paragraphs = [];
-  let blockStart = 0;
-  const separatorPattern = /\n[ \t]*\n+/gu;
-
-  for (const separator of content.matchAll(separatorPattern)) {
-    paragraphs.push({ text: content.slice(blockStart, separator.index), start: blockStart });
-    blockStart = separator.index + separator[0].length;
+  textEditor?.state.doc.descendants((node, position) => {
+    if (node.isTextblock && node.textContent.trim()) {
+      paragraphs.push({
+        text: node.textContent.trim(),
+        from: position + 1,
+        to: position + node.nodeSize - 1,
+      });
+    }
+  });
+  if (paragraphs.length === 0) {
+    contentToPlainText(content).split(/\n+/u).forEach((text) => {
+      if (text.trim()) {
+        paragraphs.push({ text: text.trim(), from: null, to: null });
+      }
+    });
   }
-  paragraphs.push({ text: content.slice(blockStart), start: blockStart });
-
   let paragraphNumber = 0;
   for (const paragraph of paragraphs) {
-    const leadingWhitespace = paragraph.text.match(/^\s*/u)[0].length;
-    const text = paragraph.text.trim();
-    if (!text) {
-      continue;
-    }
+    const text = paragraph.text;
     paragraphNumber += 1;
 
     const item = document.createElement("li");
@@ -216,9 +476,10 @@ function renderSidebarOutline(content) {
     button.className = "sidebar-outline-item";
     button.setAttribute("aria-label", `Go to paragraph ${paragraphNumber}: ${text}`);
     button.addEventListener("click", () => {
-      const start = paragraph.start + leadingWhitespace;
-      elements.content.focus();
-      elements.content.setSelectionRange(start, start + text.length);
+      if (paragraph.from !== null) {
+        textEditor.commands.setTextSelection({ from: paragraph.from, to: paragraph.to });
+        textEditor.commands.focus();
+      }
     });
 
     const number = document.createElement("span");
@@ -255,7 +516,7 @@ function renderList() {
   const query = elements.search.value.trim().toLocaleLowerCase();
   const visibleDocuments = documents.filter((document) => {
     const title = (document.title || "").toLocaleLowerCase();
-    const content = (document.content || "").toLocaleLowerCase();
+    const content = contentToPlainText(document.content || "").toLocaleLowerCase();
     return title.includes(query) || content.includes(query);
   });
 
@@ -291,7 +552,7 @@ function renderList() {
 
     const preview = document.createElement("span");
     preview.className = "document-item-preview";
-    preview.textContent = entry.content?.trim() || "No additional text";
+    preview.textContent = contentToPlainText(entry.content || "").trim() || "No additional text";
 
     copy.append(title, preview);
     item.append(icon, copy);
@@ -311,21 +572,20 @@ function renderEditor() {
   elements.documentActions.classList.toggle("disabled", !hasDocument);
 
   if (!activeDocument) {
+    elements.title.value = "";
+    textEditor.commands.setContent("", false);
+    updateWordCount();
+    hideFormattingToolbar();
     elements.breadcrumb.textContent = "Welcome";
     return;
   }
 
   elements.title.value = activeDocument.title || "";
-  elements.content.value = activeDocument.content || "";
-  resizeContentInput();
+  textEditor.commands.setContent(editorContentFromStored(activeDocument.content || ""), false);
+  hideFormattingToolbar();
   elements.breadcrumb.textContent = activeDocument.title?.trim() || "Untitled";
   elements.date.textContent = `Last edited ${formatDate(activeDocument.updatedAt)}`;
   updateWordCount();
-}
-
-function resizeContentInput() {
-  elements.content.style.height = "auto";
-  elements.content.style.height = `${elements.content.scrollHeight}px`;
 }
 
 function clampSidebarWidth(width) {
@@ -417,9 +677,210 @@ function formatDate(timestamp) {
 }
 
 function updateWordCount() {
-  const text = elements.content.value.trim();
+  const text = textEditor?.getText({ blockSeparator: "\n" }).trim() || "";
   const count = text ? text.split(/\s+/u).length : 0;
   elements.wordCount.textContent = `${count} ${count === 1 ? "word" : "words"}`;
+}
+
+function buildColorPalette(palette, colors, kind) {
+  for (const color of colors) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "palette-swatch";
+    button.dataset.color = color;
+    button.setAttribute("aria-label", `${kind} ${color}`);
+    button.title = color;
+    button.style.setProperty("--swatch-color", color);
+    palette.append(button);
+  }
+  const clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.className = "palette-clear";
+  clearButton.dataset.clear = "true";
+  clearButton.textContent = "Default";
+  palette.append(clearButton);
+}
+
+function closeFormattingPalettes() {
+  elements.textColorPalette.hidden = true;
+  elements.highlightPalette.hidden = true;
+  elements.linkEditor.hidden = true;
+  elements.toolbar.querySelectorAll("[data-palette]").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  elements.toolbar.querySelector('[data-format="link"]')?.setAttribute("aria-expanded", "false");
+}
+
+function hideFormattingToolbar() {
+  window.cancelAnimationFrame(toolbarPositionFrame);
+  toolbarPositionFrame = null;
+  elements.toolbar.classList.remove("visible");
+  elements.toolbar.setAttribute("aria-hidden", "true");
+  closeFormattingPalettes();
+  window.clearTimeout(toolbarHideTimer);
+  toolbarHideTimer = window.setTimeout(() => {
+    elements.toolbar.hidden = true;
+  }, 140);
+}
+
+function positionFormattingToolbar() {
+  if (!textEditor || textEditor.state.selection.empty) {
+    hideFormattingToolbar();
+    return;
+  }
+  const { from, to } = textEditor.state.selection;
+  const start = textEditor.view.coordsAtPos(from);
+  const end = textEditor.view.coordsAtPos(to);
+  const toolbarBounds = elements.toolbar.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.min(
+    Math.max((start.left + end.right) / 2 - toolbarBounds.width / 2, padding),
+    window.innerWidth - toolbarBounds.width - padding,
+  );
+  const top = Math.min(start.top, end.top) - toolbarBounds.height - 10;
+  elements.toolbar.style.left = `${left}px`;
+  elements.toolbar.style.top = `${top >= padding ? top : Math.max(start.bottom, end.bottom) + 10}px`;
+}
+
+function updateFormattingToolbar() {
+  if (!textEditor || textEditor.state.selection.empty || !textEditor.isFocused) {
+    hideFormattingToolbar();
+    return;
+  }
+
+  window.clearTimeout(toolbarHideTimer);
+  elements.toolbar.hidden = false;
+  elements.toolbar.setAttribute("aria-hidden", "false");
+  positionFormattingToolbar();
+  window.requestAnimationFrame(() => elements.toolbar.classList.add("visible"));
+  elements.toolbar.querySelectorAll("[data-format]").forEach((button) => {
+    const format = button.dataset.format;
+    const active = format === "link"
+      ? textEditor.isActive("link")
+      : format === "color"
+        ? Boolean(textEditor.getAttributes("textStyle").color)
+        : format === "highlight"
+          ? textEditor.isActive("highlight")
+          : textEditor.isActive(format);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  elements.toolbar.querySelectorAll("[data-heading]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(
+      textEditor.isActive("heading", { level: Number(button.dataset.heading) }),
+    ));
+  });
+  elements.toolbar.querySelector('[data-palette="text"]').setAttribute(
+    "aria-pressed",
+    String(Boolean(textEditor.getAttributes("textStyle").color)),
+  );
+  elements.toolbar.querySelector('[data-palette="highlight"]').setAttribute(
+    "aria-pressed",
+    String(textEditor.isActive("highlight")),
+  );
+}
+
+function editLink() {
+  if (elements.toolbar.hidden) {
+    updateFormattingToolbar();
+  }
+  closeFormattingPalettes();
+  elements.linkInput.value = textEditor.getAttributes("link").href || "";
+  elements.linkEditor.hidden = false;
+  elements.toolbar.querySelector('[data-format="link"]').setAttribute("aria-expanded", "true");
+  elements.linkInput.focus();
+}
+
+function applyLink(href) {
+  const chain = textEditor.chain().focus().extendMarkRange("link");
+  if (href.trim()) {
+    chain.setLink({ href: href.trim() }).run();
+  } else {
+    chain.unsetLink().run();
+  }
+  elements.linkEditor.hidden = true;
+  elements.toolbar.querySelector('[data-format="link"]').setAttribute("aria-expanded", "false");
+  updateFormattingToolbar();
+}
+
+function applyToolbarAction(button) {
+  if (button.dataset.heading) {
+    textEditor.chain().focus()
+      .toggleHeading({ level: Number(button.dataset.heading) })
+      .run();
+    return;
+  }
+
+  const command = {
+    bold: "toggleBold",
+    italic: "toggleItalic",
+    underline: "toggleUnderline",
+    strike: "toggleStrike",
+    code: "toggleCode",
+  }[button.dataset.format];
+  if (command) {
+    textEditor.chain().focus()[command]().run();
+  } else if (button.dataset.format === "link") {
+    editLink();
+  }
+}
+
+function bindFormattingToolbar() {
+  buildColorPalette(
+    elements.textColorPalette,
+    ["#37352f", "#9b9a97", "#d44c47", "#d9730d", "#cb912f", "#448361", "#337ea9", "#9065b0"],
+    "Text color",
+  );
+  buildColorPalette(
+    elements.highlightPalette,
+    ["#fef3c7", "#fde2e2", "#e4f2e7", "#e2efff", "#eee5f8", "#f0efed"],
+    "Highlight",
+  );
+
+  elements.toolbar.addEventListener("mousedown", (event) => {
+    if (!event.target.closest("input")) {
+      event.preventDefault();
+    }
+  });
+  elements.toolbar.addEventListener("click", (event) => {
+    const paletteButton = event.target.closest("[data-palette]");
+    if (paletteButton) {
+      const palette = paletteButton.dataset.palette === "text"
+        ? elements.textColorPalette
+        : elements.highlightPalette;
+      const wasOpen = !palette.hidden;
+      closeFormattingPalettes();
+      palette.hidden = wasOpen;
+      paletteButton.setAttribute("aria-expanded", String(!wasOpen));
+      return;
+    }
+
+    const swatch = event.target.closest(".palette-swatch, .palette-clear");
+    if (swatch) {
+      const palette = swatch.closest(".toolbar-palette");
+      if (palette === elements.textColorPalette) {
+        const chain = textEditor.chain().focus();
+        (swatch.dataset.clear ? chain.unsetColor() : chain.setColor(swatch.dataset.color)).run();
+      } else {
+        const chain = textEditor.chain().focus();
+        (swatch.dataset.clear ? chain.unsetHighlight() : chain.setHighlight({ color: swatch.dataset.color })).run();
+      }
+      closeFormattingPalettes();
+      updateFormattingToolbar();
+      return;
+    }
+
+    const button = event.target.closest("[data-format], [data-heading]");
+    if (button) {
+      applyToolbarAction(button);
+    }
+  });
+  elements.linkEditor.addEventListener("submit", (event) => {
+    event.preventDefault();
+    applyLink(elements.linkInput.value);
+  });
+  elements.linkEditor.querySelector("[data-action='remove-link']").addEventListener("click", () => {
+    applyLink("");
+  });
 }
 
 function scheduleSave() {
@@ -429,7 +890,7 @@ function scheduleSave() {
   }
 
   activeDocument.title = elements.title.value;
-  activeDocument.content = elements.content.value;
+  activeDocument.content = textEditor.getHTML();
   activeDocument.updatedAt = Date.now();
   saveLocalDraft(activeDocument);
   if (elements.sidebar.classList.contains("sidebar-showing-document")) {
@@ -650,16 +1111,24 @@ async function shareWithWhatsApp() {
   }
 }
 
-async function initialize() {
+async function loadWorkspaceDocuments(preferredDocumentId = activeDocumentId) {
   try {
     documents = await request(API_URL);
   } catch (error) {
     documents = loadLocalDraftDocuments();
+    sortDocuments();
+    activeDocumentId = documents.find((entry) => entry.id === preferredDocumentId)?.id ?? documents[0]?.id ?? null;
+    renderEditor();
+    renderList();
+    if (elements.sidebar.classList.contains("sidebar-showing-document")) {
+      const activeDocument = documents.find((entry) => entry.id === activeDocumentId);
+      if (activeDocument) {
+        showSidebarDocument(activeDocument);
+      } else {
+        showDocumentList();
+      }
+    }
     if (documents.length > 0) {
-      sortDocuments();
-      activeDocumentId = documents[0].id;
-      renderEditor();
-      renderList();
       setSaveStatus("error", "Showing local copies");
       showToast("The server is unavailable. Showing saved browser copies.");
       console.error("Unable to load documents from the server:", error);
@@ -686,12 +1155,123 @@ async function initialize() {
     }
   }
   sortDocuments();
-  activeDocumentId = documents[0]?.id ?? null;
+  activeDocumentId = documents.find((entry) => entry.id === preferredDocumentId)?.id ?? documents[0]?.id ?? null;
   renderEditor();
   renderList();
+  if (elements.sidebar.classList.contains("sidebar-showing-document")) {
+    const activeDocument = documents.find((entry) => entry.id === activeDocumentId);
+    if (activeDocument) {
+      showSidebarDocument(activeDocument);
+    } else {
+      showDocumentList();
+    }
+  }
   for (const documentId of restoredDocumentIds) {
     void saveDocument(documentId);
   }
+  setSaveStatus("saved", "All changes saved");
+}
+
+async function refreshAccountWorkspace(previousWorkspaceId, preferredDocumentId) {
+  const session = await request("/api/auth/session");
+  rekeyLocalDrafts(previousWorkspaceId, session.workspaceId);
+  currentUser = session;
+  elements.search.value = "";
+  updateAccountMenu();
+  await loadWorkspaceDocuments(preferredDocumentId);
+}
+
+async function authenticateAccount(email, password) {
+  const previousWorkspaceId = currentUser.workspaceId;
+  const preferredDocumentId = activeDocumentId;
+  if (!(await flushSave())) {
+    return;
+  }
+  await request("/api/auth/login", {
+    method: "POST",
+    body: new URLSearchParams({ email, password }),
+  });
+  await refreshAccountWorkspace(previousWorkspaceId, preferredDocumentId);
+  elements.accountDialog.close();
+  closeAccountMenu();
+  showToast("You’re logged in. Your notes are ready.");
+}
+
+async function logoutAccount() {
+  if (!(await flushSave())) {
+    return;
+  }
+  await request("/api/auth/logout", { method: "POST" });
+  const guestSession = await request("/api/auth/session");
+  currentUser = guestSession;
+  elements.search.value = "";
+  updateAccountMenu();
+  await loadWorkspaceDocuments(null);
+  closeAccountMenu();
+  showToast("You’re now using Squareone as a guest.");
+}
+
+async function submitAccountForm(event) {
+  event.preventDefault();
+  elements.accountFormError.hidden = true;
+  try {
+    if (accountDialogMode === "login") {
+      await authenticateAccount(elements.accountEmailInput.value.trim(), elements.accountPasswordInput.value);
+    } else if (accountDialogMode === "signup") {
+      if (!(await flushSave())) {
+        return;
+      }
+      const email = elements.accountEmailInput.value.trim();
+      const password = elements.accountPasswordInput.value;
+      await request("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          name: elements.accountNameInput.value.trim(),
+          email,
+          password,
+        }),
+      });
+      await authenticateAccount(email, password);
+    } else if (accountDialogMode === "profile") {
+      const profile = await request("/api/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          name: elements.accountNameInput.value.trim(),
+          email: elements.accountEmailInput.value.trim(),
+          avatarColor: elements.accountAvatarColorInput.value,
+        }),
+      });
+      currentUser = profile;
+      updateAccountMenu();
+      elements.accountDialog.close();
+      showToast("Your profile was updated.");
+    } else if (accountDialogMode === "settings") {
+      await request("/api/auth/password", {
+        method: "PUT",
+        body: JSON.stringify({
+          currentPassword: elements.accountCurrentPasswordInput.value,
+          newPassword: elements.accountNewPasswordInput.value,
+        }),
+      });
+      elements.accountDialog.close();
+      showToast("Your password was updated.");
+    }
+  } catch (error) {
+    showAccountFormError(error.message || "That didn’t work. Please try again.");
+  }
+}
+
+async function initialize() {
+  try {
+    currentUser = await request("/api/auth/session");
+    updateAccountMenu();
+  } catch (error) {
+    setSaveStatus("error", "Couldn't connect");
+    showToast("Squareone couldn’t connect. Refresh to try again.");
+    console.error("Unable to load the guest or account session:", error);
+    return;
+  }
+  await loadWorkspaceDocuments(null);
 }
 
 elements.newButton.addEventListener("click", () => void createDocument());
@@ -701,17 +1281,111 @@ elements.documentActions.querySelectorAll("[data-export-format]").forEach((butto
   button.addEventListener("click", () => void exportDocument(button.dataset.exportFormat));
 });
 elements.whatsappButton.addEventListener("click", () => void shareWithWhatsApp());
+elements.accountMenuTrigger.addEventListener("click", () => {
+  const isExpanded = elements.accountMenuTrigger.getAttribute("aria-expanded") === "true";
+  elements.accountMenuPanel.hidden = isExpanded;
+  elements.accountMenuTrigger.setAttribute("aria-expanded", String(!isExpanded));
+});
+elements.accountProfile.addEventListener("click", () => {
+  closeAccountMenu();
+  showAccountDialog("profile");
+});
+elements.accountSettings.addEventListener("click", () => {
+  closeAccountMenu();
+  showAccountDialog("settings");
+});
+elements.accountLogin.addEventListener("click", () => {
+  closeAccountMenu();
+  showAccountDialog("login");
+});
+elements.accountLogout.addEventListener("click", () => {
+  void logoutAccount().catch((error) => {
+    showToast(error.message || "Couldn’t log out. Please try again.");
+    console.error("Unable to log out:", error);
+  });
+});
+elements.accountDialogClose.addEventListener("click", () => elements.accountDialog.close());
+elements.accountGuestContinue.addEventListener("click", () => elements.accountDialog.close());
+elements.accountModeToggle.addEventListener("click", () => {
+  const name = elements.accountNameInput.value;
+  const email = elements.accountEmailInput.value;
+  showAccountDialog(accountDialogMode === "login" ? "signup" : "login");
+  elements.accountNameInput.value = name;
+  elements.accountEmailInput.value = email;
+});
+elements.accountForm.addEventListener("submit", (event) => void submitAccountForm(event));
+document.addEventListener("click", (event) => {
+  if (!elements.accountMenu.contains(event.target)) {
+    closeAccountMenu();
+  }
+});
 elements.search.addEventListener("input", renderList);
 elements.title.addEventListener("input", scheduleSave);
-elements.content.addEventListener("input", () => {
-  resizeContentInput();
-  updateWordCount();
-  scheduleSave();
+bindFormattingToolbar();
+textEditor = new Editor({
+  element: elements.content,
+  extensions: [
+    StarterKit.configure({
+      blockquote: false,
+      bulletList: false,
+      codeBlock: false,
+      heading: { levels: [1, 2, 3] },
+      horizontalRule: false,
+      listItem: false,
+      orderedList: false,
+    }),
+    Underline,
+    Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+    TextStyle,
+    Color.configure({ types: ["textStyle"] }),
+    Highlight.configure({ multicolor: true }),
+    Placeholder.configure({ placeholder: "Begin with a thought..." }),
+  ],
+  editorProps: {
+    attributes: {
+      class: "tiptap-content",
+      role: "textbox",
+      "aria-multiline": "true",
+      "data-placeholder": "Begin with a thought...",
+      spellcheck: "true",
+    },
+    handleKeyDown(_view, event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
+        if (textEditor.state.selection.empty && !textEditor.isActive("link")) {
+          return false;
+        }
+        event.preventDefault();
+        editLink();
+        return true;
+      }
+      return false;
+    },
+  },
+  onUpdate() {
+    updateWordCount();
+    scheduleSave();
+  },
+  onSelectionUpdate: updateFormattingToolbar,
+  onFocus: updateFormattingToolbar,
+  onBlur() {
+    window.setTimeout(() => {
+      if (!elements.toolbar.contains(document.activeElement)) {
+        hideFormattingToolbar();
+      }
+    }, 0);
+  },
 });
 window.addEventListener("resize", () => {
   setSidebarWidth(sidebarWidth);
-  resizeContentInput();
+  if (!elements.toolbar.hidden) {
+    positionFormattingToolbar();
+  }
 });
+window.addEventListener("scroll", () => {
+  if (!elements.toolbar.hidden) {
+    positionFormattingToolbar();
+  }
+}, true);
 
 document.addEventListener("keydown", (event) => {
   const modifier = event.metaKey || event.ctrlKey;

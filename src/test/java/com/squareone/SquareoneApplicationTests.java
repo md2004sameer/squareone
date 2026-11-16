@@ -12,9 +12,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import com.squareone.model.Document;
+import com.squareone.model.AppUser;
+import com.squareone.repository.AppUserRepository;
 import com.squareone.repository.DocumentRepository;
+import com.squareone.service.DocumentOwner;
 import com.squareone.service.DocumentExportService;
 import com.squareone.service.WhatsAppShareService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.squareone.export.PdfDocumentExporter;
 import com.squareone.export.PlainTextDocumentExporter;
 import com.squareone.export.WordDocumentExporter;
@@ -28,6 +32,12 @@ class SquareoneApplicationTests {
 
 	@Autowired
 	private DocumentRepository documentRepository;
+
+	@Autowired
+	private AppUserRepository appUserRepository;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
 
 	@Autowired
 	private PlainTextDocumentExporter plainTextDocumentExporter;
@@ -68,11 +78,13 @@ class SquareoneApplicationTests {
 	@Test
 	void exportServiceSelectsTheExporterAndCreatesASafeFilename() throws Exception {
 		Document document = sampleDocument();
+		AppUser owner = createUser();
+		document.setOwnerUser(owner);
 		document.setTitle("My note / 1");
 		documentRepository.save(document);
 
 		DocumentExportService.ExportedDocument exported =
-				documentExportService.export(document.getId(), "txt");
+				documentExportService.export(document.getId(), "txt", DocumentOwner.user(owner.getId()));
 
 		assertThat(exported.filename()).isEqualTo("My note _ 1.txt");
 		assertThat(exported.contentType()).isEqualTo("text/plain;charset=UTF-8");
@@ -85,6 +97,41 @@ class SquareoneApplicationTests {
 		String pdf = new String(pdfBytes, StandardCharsets.ISO_8859_1);
 		assertThat(pdf).startsWith("%PDF-1.4");
 		assertThat(pdf).contains("A thoughtful note", "First sentence.", "Second paragraph.", "xref", "%%EOF");
+	}
+
+	@Test
+	void exportsRichTextDocumentsAsReadablePlainText() throws Exception {
+		Document document = sampleDocument();
+		AppUser owner = createUser();
+		document.setOwnerUser(owner);
+		document.setContent("<h1>A heading</h1><p>First <strong>sentence</strong>.</p><p>Second paragraph.</p>");
+		documentRepository.save(document);
+
+		String plainText = new String(plainTextDocumentExporter.export(document), StandardCharsets.UTF_8);
+		assertThat(plainText).contains("A heading", "First sentence.", "Second paragraph.")
+				.doesNotContain("<strong>");
+
+		String pdf = new String(pdfDocumentExporter.export(document), StandardCharsets.ISO_8859_1);
+		assertThat(pdf).contains("A heading", "First sentence.", "Second paragraph.")
+				.doesNotContain("<strong>");
+
+		Map<String, String> wordEntries = new HashMap<>();
+		try (ZipInputStream wordFile = new ZipInputStream(
+				new java.io.ByteArrayInputStream(wordDocumentExporter.export(document)))) {
+			ZipEntry entry;
+			while ((entry = wordFile.getNextEntry()) != null) {
+				ByteArrayOutputStream contents = new ByteArrayOutputStream();
+				wordFile.transferTo(contents);
+				wordEntries.put(entry.getName(), contents.toString(StandardCharsets.UTF_8));
+			}
+		}
+		assertThat(wordEntries.get("word/document.xml"))
+				.contains("A heading", "First sentence.", "Second paragraph.")
+				.doesNotContain("<strong>");
+
+		String shareUrl = whatsAppShareService.createShareUrl(document.getId(), DocumentOwner.user(owner.getId()));
+		assertThat(shareUrl).contains("A+heading", "First+sentence.", "Second+paragraph.")
+				.doesNotContain("%3Cstrong%3E");
 	}
 
 	@Test
@@ -108,9 +155,11 @@ class SquareoneApplicationTests {
 	@Test
 	void createsWhatsAppShareUrlWithEncodedDocumentText() {
 		Document document = sampleDocument();
+		AppUser owner = createUser();
+		document.setOwnerUser(owner);
 		documentRepository.save(document);
 
-		String shareUrl = whatsAppShareService.createShareUrl(document.getId());
+		String shareUrl = whatsAppShareService.createShareUrl(document.getId(), DocumentOwner.user(owner.getId()));
 
 		assertThat(shareUrl)
 				.startsWith("https://wa.me/?text=")
@@ -124,6 +173,11 @@ class SquareoneApplicationTests {
 		document.setTitle("A thoughtful note");
 		document.setContent("First sentence.\nSecond paragraph.");
 		return document;
+	}
+
+	private AppUser createUser() {
+		String email = "test-" + java.util.UUID.randomUUID() + "@example.com";
+		return appUserRepository.save(new AppUser("Test user", email, passwordEncoder.encode("password123"), "#617459"));
 	}
 
 }

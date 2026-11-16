@@ -1,6 +1,6 @@
 # Squareone
 
-Squareone is a free-to-use, simple text editor.
+Squareone is a free-to-use text editor with selection-based rich-text formatting, autosave, local draft recovery, search, and document export.
 
 ## Deploy with Docker Compose
 
@@ -23,11 +23,15 @@ Set `APP_PORT` if port `8080` is already in use. Stop the service with `docker c
 
 ## Data and privacy
 
+Squareone opens in a private guest workspace; signing up is optional. Guest documents are scoped to the browser's server session. Creating an account or logging in transfers that session's documents to the account. Registered users can only list, read, update, delete, export, and share their own documents. Sessions use HTTP-only, same-site cookies and CSRF protection. Set `SESSION_COOKIE_SECURE=true` when serving Squareone over HTTPS.
+
 Documents are stored in an H2 database on the named `squareone-data` volume and survive container recreation. Back up the database regularly; stop the app before copying the volume to ensure a consistent backup. `docker compose down -v` deletes the volume and all stored documents.
 
-While editing, the browser also keeps a local copy of each document. These copies are scoped to the current browser profile and website origin, are refreshed as you type, and expire 30 days after the most recent edit. If an unexpired local copy is newer than the H2 version, it is restored and synchronized when the app loads. Clearing browser site data removes these local copies; the H2 database remains the primary persistent store.
+While editing, the browser also keeps a local copy of each document. Copies are scoped to the current guest session or account, refreshed as you type, and expire 30 days after the most recent edit. If a local copy is newer than the H2 version, it is restored and synchronized when the app loads. Clearing browser site data removes these copies; the H2 database remains the primary persistent store.
 
-There is no authentication or per-user data separation: everyone who can reach the app can view, create, edit, and delete the same documents. Do not store private or sensitive content or expose this instance as a shared public service unless shared documents are intentional. This setup is for a single application instance; do not run multiple replicas against the H2 volume.
+Documents that existed before ownership was introduced are retained in the database with no owner and are deliberately excluded from every guest and account API. They are not assigned to the first user or guest. An operator must explicitly review and assign legacy rows before making them available. Local drafts created by older releases are likewise not auto-imported because they have no trustworthy owner identity.
+
+Accounts are shared across this single application instance. Use HTTPS for network access, and do not run multiple replicas against the same H2 volume.
 
 ## Run locally without Docker
 

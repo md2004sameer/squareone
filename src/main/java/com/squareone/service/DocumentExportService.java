@@ -28,8 +28,8 @@ public class DocumentExportService {
                 Function.identity()));
     }
 
-    public ExportedDocument export(String documentId, String format) throws IOException {
-        Document document = documentService.getDocument(documentId);
+    public ExportedDocument export(String documentId, String format, DocumentOwner owner) throws IOException {
+        Document document = documentService.getDocument(documentId, owner);
         DocumentExporter exporter = exporters.get(format.toLowerCase(Locale.ROOT));
         if (exporter == null) {
             throw new IllegalArgumentException("Unsupported document export format: " + format);

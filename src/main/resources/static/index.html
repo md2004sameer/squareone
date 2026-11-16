@@ -13,8 +13,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/stylesdocs.css?v=11" />
-    <script src="/appdocs.js?v=10" defer></script>
+    <link rel="stylesheet" href="/stylesdocs.css?v=13" />
+    <script type="module" src="/appdocs.js?v=12"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -61,9 +61,26 @@
           <p class="sidebar-outline-empty" id="sidebar-outline-empty" hidden>No paragraphs to navigate yet.</p>
         </section>
 
+        <div class="account-menu" id="account-menu">
+          <button class="account-menu-trigger" id="account-menu-trigger" type="button" aria-expanded="false" aria-haspopup="menu">
+            <span class="account-avatar" id="account-avatar" aria-hidden="true">G</span>
+            <span class="account-menu-label">
+              <span class="account-menu-name" id="account-menu-name">Guest</span>
+              <span class="account-menu-email" id="account-menu-email">Your private space</span>
+            </span>
+            <span class="account-menu-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="account-menu-panel" id="account-menu-panel" role="menu" hidden>
+            <button type="button" id="account-profile" role="menuitem" hidden>Profile</button>
+            <button type="button" id="account-settings" role="menuitem" hidden>Settings</button>
+            <button type="button" id="account-login" role="menuitem">Log in or sign up</button>
+            <button type="button" id="account-logout" role="menuitem" hidden>Log out</button>
+          </div>
+        </div>
+
         <div class="sidebar-footer">
           <span class="online-dot" aria-hidden="true"></span>
-          <span>Everything in its place.</span>
+          <span id="sidebar-footer-copy">Everything in its place.</span>
         </div>
       </aside>
       <div
@@ -144,16 +161,82 @@
               maxlength="160"
             />
             <div class="editor-divider"></div>
-            <textarea
-              class="content-input"
-              id="content-input"
-              placeholder="Begin with a thought..."
-              aria-label="Document content"
-              spellcheck="true"
-            ></textarea>
+            <div class="content-input" id="content-input" aria-label="Document content"></div>
             <div class="word-count" id="word-count">0 words</div>
           </article>
+          <div class="formatting-toolbar" id="formatting-toolbar" role="toolbar" aria-label="Text formatting" aria-hidden="true" hidden>
+            <div class="toolbar-group" role="group" aria-label="Text style">
+              <button type="button" class="toolbar-button toolbar-heading" data-heading="1" title="Heading 1">H1</button>
+              <button type="button" class="toolbar-button toolbar-heading" data-heading="2" title="Heading 2">H2</button>
+              <button type="button" class="toolbar-button toolbar-heading" data-heading="3" title="Heading 3">H3</button>
+            </div>
+            <span class="toolbar-divider" aria-hidden="true"></span>
+            <div class="toolbar-group" role="group" aria-label="Text formatting">
+              <button type="button" class="toolbar-button toolbar-bold" data-format="bold" aria-label="Bold" title="Bold (⌘B)">B</button>
+              <button type="button" class="toolbar-button toolbar-italic" data-format="italic" aria-label="Italic" title="Italic (⌘I)">I</button>
+              <button type="button" class="toolbar-button toolbar-underline" data-format="underline" aria-label="Underline" title="Underline (⌘U)">U</button>
+              <button type="button" class="toolbar-button toolbar-strike" data-format="strike" aria-label="Strikethrough" title="Strikethrough">S</button>
+              <button type="button" class="toolbar-button toolbar-code" data-format="code" aria-label="Inline code" title="Inline code">‹›</button>
+              <button type="button" class="toolbar-button" data-format="link" aria-label="Link" aria-expanded="false" title="Link (⌘K)">↗</button>
+            </div>
+            <span class="toolbar-divider" aria-hidden="true"></span>
+            <div class="toolbar-group toolbar-color-group" role="group" aria-label="Text color and highlight">
+              <button type="button" class="toolbar-button toolbar-color" data-palette="text" aria-label="Text color" title="Text color">
+                A<span class="color-indicator"></span>
+              </button>
+              <button type="button" class="toolbar-button toolbar-highlight" data-palette="highlight" aria-label="Highlight" title="Highlight">
+                ▰
+              </button>
+            </div>
+            <div class="toolbar-palette" id="text-color-palette" aria-label="Text color choices" hidden></div>
+            <div class="toolbar-palette" id="highlight-palette" aria-label="Highlight choices" hidden></div>
+            <form class="toolbar-link-editor" id="toolbar-link-editor" hidden>
+              <input id="toolbar-link-input" type="url" aria-label="Link URL" placeholder="Paste a link" />
+              <button type="submit">Apply</button>
+              <button type="button" data-action="remove-link">Remove</button>
+            </form>
+          </div>
         </section>
+        <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
+          <div class="account-dialog-header">
+            <div>
+              <p class="eyebrow" id="account-dialog-eyebrow">Your Squareone</p>
+              <h2 id="account-dialog-title">Log in</h2>
+            </div>
+            <button class="account-dialog-close" type="button" id="account-dialog-close" aria-label="Close dialog">×</button>
+          </div>
+          <p class="account-dialog-copy" id="account-dialog-copy">Your notes stay private to your account.</p>
+          <form id="account-form">
+            <label class="account-field" id="account-name-field" hidden>
+              <span>Name</span>
+              <input id="account-name-input" type="text" maxlength="100" autocomplete="name" />
+            </label>
+            <label class="account-field" id="account-email-field">
+              <span>Email</span>
+              <input id="account-email-input" type="email" maxlength="254" autocomplete="email" required />
+            </label>
+            <label class="account-field" id="account-password-field">
+              <span>Password</span>
+              <input id="account-password-input" type="password" minlength="8" maxlength="72" autocomplete="current-password" required />
+            </label>
+            <label class="account-field" id="account-avatar-color-field" hidden>
+              <span>Avatar color</span>
+              <input id="account-avatar-color-input" type="color" value="#617459" />
+            </label>
+            <label class="account-field" id="account-current-password-field" hidden>
+              <span>Current password</span>
+              <input id="account-current-password-input" type="password" autocomplete="current-password" />
+            </label>
+            <label class="account-field" id="account-new-password-field" hidden>
+              <span>New password</span>
+              <input id="account-new-password-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" />
+            </label>
+            <p class="account-form-error" id="account-form-error" role="alert" hidden></p>
+            <button class="primary-button account-submit" id="account-submit" type="submit">Log in</button>
+          </form>
+          <button class="account-mode-toggle" id="account-mode-toggle" type="button">New here? Create an account</button>
+          <button class="account-guest-continue" id="account-guest-continue" type="button">Continue as Guest</button>
+        </dialog>
         <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
       </main>
     </div>

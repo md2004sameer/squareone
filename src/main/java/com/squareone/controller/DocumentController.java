@@ -5,6 +5,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import jakarta.servlet.http.HttpSession;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -22,6 +25,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.squareone.model.Document;
+import com.squareone.security.AppUserDetails;
+import com.squareone.security.GuestSessionService;
+import com.squareone.service.DocumentOwner;
 import com.squareone.service.DocumentExportService;
 import com.squareone.service.DocumentService;
 import com.squareone.service.WhatsAppShareService;
@@ -33,55 +39,77 @@ public class DocumentController {
     private final DocumentService documentService;
     private final DocumentExportService documentExportService;
     private final WhatsAppShareService whatsAppShareService;
+    private final GuestSessionService guestSessionService;
 
     public DocumentController(
             DocumentService documentService,
             DocumentExportService documentExportService,
-            WhatsAppShareService whatsAppShareService) {
+            WhatsAppShareService whatsAppShareService,
+            GuestSessionService guestSessionService) {
         this.documentService = documentService;
         this.documentExportService = documentExportService;
         this.whatsAppShareService = whatsAppShareService;
+        this.guestSessionService = guestSessionService;
     }
 
     @PostMapping
-    public ResponseEntity<Document> createDocument() {
-        Document document = documentService.createDocument();
+    public ResponseEntity<DocumentResponse> createDocument(
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        Document document = documentService.createDocument(resolveOwner(principal, session));
         URI location = URI.create("/api/documents/" + document.getId());
-        return ResponseEntity.created(location).body(document);
+        return ResponseEntity.created(location).body(toResponse(document));
     }
+
     @GetMapping("/health")
     public String health() {
-    return "OK";
+        return "OK";
     }
 
     @GetMapping
-    public List<Document> getAllDocuments() {
-        return documentService.getAllDocuments();
+    public List<DocumentResponse> getAllDocuments(
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        return documentService.getAllDocuments(resolveOwner(principal, session)).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public Document getDocument(@PathVariable String id) {
-        return documentService.getDocument(id);
+    public DocumentResponse getDocument(
+            @PathVariable String id,
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        return toResponse(documentService.getDocument(id, resolveOwner(principal, session)));
     }
 
     @PutMapping("/{id}")
-    public Document updateDocument(
+    public DocumentResponse updateDocument(
             @PathVariable String id,
-            @RequestBody DocumentRequest request) {
-        return documentService.updateDocument(id, request.title(), request.content());
+            @RequestBody DocumentRequest request,
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        return toResponse(documentService.updateDocument(
+                id, resolveOwner(principal, session), request.title(), request.content()));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteDocument(@PathVariable String id) {
-        documentService.deleteDocument(id);
+    public ResponseEntity<Void> deleteDocument(
+            @PathVariable String id,
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        documentService.deleteDocument(id, resolveOwner(principal, session));
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/export/{format}")
     public ResponseEntity<byte[]> exportDocument(
             @PathVariable String id,
-            @PathVariable String format) throws IOException {
-        DocumentExportService.ExportedDocument exported = documentExportService.export(id, format);
+            @PathVariable String format,
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) throws IOException {
+        DocumentExportService.ExportedDocument exported =
+                documentExportService.export(id, format, resolveOwner(principal, session));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(exported.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
@@ -93,8 +121,11 @@ public class DocumentController {
     }
 
     @GetMapping("/{id}/share/whatsapp")
-    public WhatsAppShareResponse createWhatsAppShare(@PathVariable String id) {
-        return new WhatsAppShareResponse(whatsAppShareService.createShareUrl(id));
+    public WhatsAppShareResponse createWhatsAppShare(
+            @PathVariable String id,
+            @AuthenticationPrincipal AppUserDetails principal,
+            HttpSession session) {
+        return new WhatsAppShareResponse(whatsAppShareService.createShareUrl(id, resolveOwner(principal, session)));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -105,6 +136,24 @@ public class DocumentController {
     public record DocumentRequest(String title, String content) {
     }
 
+    public record DocumentResponse(String id, String title, String content, long createdAt, long updatedAt) {
+    }
+
     public record WhatsAppShareResponse(String shareUrl) {
+    }
+
+    private DocumentOwner resolveOwner(AppUserDetails principal, HttpSession session) {
+        return principal == null
+                ? DocumentOwner.guest(guestSessionService.getOrCreateGuestId(session))
+                : DocumentOwner.user(principal.user().getId());
+    }
+
+    private DocumentResponse toResponse(Document document) {
+        return new DocumentResponse(
+                document.getId(),
+                document.getTitle(),
+                document.getContent(),
+                document.getCreatedAt(),
+                document.getUpdatedAt());
     }
 }
