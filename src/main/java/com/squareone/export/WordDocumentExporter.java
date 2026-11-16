@@ -10,6 +10,10 @@ import org.springframework.stereotype.Component;
 
 import com.squareone.model.Document;
 import com.squareone.util.DocumentContentText;
+import com.squareone.util.DocumentContentText.Block;
+import com.squareone.util.DocumentContentText.TableBlock;
+import com.squareone.util.DocumentContentText.TableRow;
+import com.squareone.util.DocumentContentText.TextBlock;
 
 @Component
 public class WordDocumentExporter implements DocumentExporter {
@@ -105,8 +109,14 @@ public class WordDocumentExporter implements DocumentExporter {
         StringBuilder body = new StringBuilder();
         body.append(paragraph("Title", document.getTitle()));
         body.append(paragraph("Subtitle", "A document from Squareone"));
-        for (String line : DocumentContentText.toPlainText(document.getContent()).split("\\R", -1)) {
-            body.append(paragraph("Normal", line));
+        for (Block block : DocumentContentText.toBlocks(document.getContent())) {
+            if (block instanceof TextBlock textBlock) {
+                for (String line : textBlock.text().split("\\R", -1)) {
+                    body.append(paragraph("Normal", line));
+                }
+            } else if (block instanceof TableBlock tableBlock) {
+                body.append(table(tableBlock));
+            }
         }
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -120,6 +130,56 @@ public class WordDocumentExporter implements DocumentExporter {
                   </w:body>
                 </w:document>
                 """.formatted(WORD_NAMESPACE, body);
+    }
+
+    private String table(TableBlock table) {
+        int columnCount = table.rows().stream().mapToInt(row -> row.cells().size()).max().orElse(0);
+        if (columnCount == 0) {
+            return "";
+        }
+
+        StringBuilder xml = new StringBuilder("<w:tbl><w:tblPr><w:tblW w:w=\"9360\" w:type=\"dxa\"/>")
+                .append("<w:tblBorders>")
+                .append("<w:top w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("<w:left w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("<w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("<w:right w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("<w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("<w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"D9DCD5\"/>")
+                .append("</w:tblBorders></w:tblPr><w:tblGrid>");
+        int columnWidth = 9360 / columnCount;
+        for (int column = 0; column < columnCount; column++) {
+            xml.append("<w:gridCol w:w=\"").append(columnWidth).append("\"/>");
+        }
+        xml.append("</w:tblGrid>");
+
+        for (TableRow row : table.rows()) {
+            xml.append("<w:tr>");
+            if (row.header()) {
+                xml.append("<w:trPr><w:tblHeader/></w:trPr>");
+            }
+            for (int column = 0; column < columnCount; column++) {
+                String value = column < row.cells().size() ? row.cells().get(column) : "";
+                xml.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(columnWidth)
+                        .append("\" w:type=\"dxa\"/>");
+                if (row.header()) {
+                    xml.append("<w:shd w:fill=\"F0F1ED\"/>");
+                }
+                xml.append("</w:tcPr>");
+                for (String line : value.split("\\R", -1)) {
+                    xml.append(tableCellParagraph(line, row.header()));
+                }
+                xml.append("</w:tc>");
+            }
+            xml.append("</w:tr>");
+        }
+        return xml.append("</w:tbl>").toString();
+    }
+
+    private String tableCellParagraph(String text, boolean header) {
+        return "<w:p><w:r>" + (header ? "<w:rPr><w:b/></w:rPr>" : "")
+                + "<w:t xml:space=\"preserve\">" + xmlEscape(text)
+                + "</w:t></w:r></w:p>";
     }
 
     private String paragraph(String style, String text) {

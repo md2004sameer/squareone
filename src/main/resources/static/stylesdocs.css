@@ -1262,6 +1262,96 @@ kbd {
   margin-bottom: 0;
 }
 
+.tiptap-content .tableWrapper {
+  max-width: 100%;
+  margin: 1.4em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tiptap-content table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: inherit;
+  font-size: 14px;
+  table-layout: fixed;
+}
+
+.tiptap-content th,
+.tiptap-content td {
+  position: relative;
+  min-width: 96px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.tiptap-content tr:first-child > th,
+.tiptap-content tr:first-child > td {
+  border-top: 1px solid var(--line);
+}
+
+.tiptap-content tr > :first-child {
+  border-left: 1px solid var(--line);
+}
+
+.tiptap-content tr:first-child > :first-child {
+  border-top-left-radius: 6px;
+}
+
+.tiptap-content tr:first-child > :last-child {
+  border-top-right-radius: 6px;
+}
+
+.tiptap-content tr:last-child > :first-child {
+  border-bottom-left-radius: 6px;
+}
+
+.tiptap-content tr:last-child > :last-child {
+  border-bottom-right-radius: 6px;
+}
+
+.tiptap-content th {
+  background: var(--block-surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tiptap-content th p,
+.tiptap-content td p {
+  margin: 0;
+}
+
+.tiptap-content .selectedCell::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: #6174591c;
+  content: "";
+  pointer-events: none;
+}
+
+.tiptap-content .column-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  background: var(--accent);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.tiptap-content.resize-cursor {
+  cursor: col-resize;
+}
+
 .formatting-toolbar {
   position: fixed;
   z-index: 20;
@@ -1472,6 +1562,123 @@ kbd {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.table-controls {
+  position: fixed;
+  z-index: 28;
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--floating-border);
+  border-radius: 7px;
+  background: var(--floating-bg);
+  box-shadow: 0 3px 12px #25272214;
+}
+
+.table-controls[hidden],
+.table-edge-control[hidden] {
+  display: none;
+}
+
+.table-controls.visible {
+  animation: table-control-in 100ms ease both;
+}
+
+.table-control-button,
+.table-edge-control {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--floating-bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.table-control-button:hover,
+.table-control-button:focus-visible,
+.table-edge-control:hover,
+.table-edge-control:focus-visible {
+  outline: none;
+  background: var(--floating-hover);
+  color: var(--ink);
+}
+
+.table-actions-trigger {
+  font-weight: 700;
+}
+
+.table-actions-menu {
+  position: fixed;
+  z-index: 29;
+  display: grid;
+  width: 210px;
+  max-height: min(390px, calc(100vh - 24px));
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--floating-border);
+  border-radius: 8px;
+  background: var(--floating-bg);
+  box-shadow: 0 10px 28px #2527221c;
+}
+
+.table-actions-menu[hidden] {
+  display: none;
+}
+
+.table-actions-menu button {
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+}
+
+.table-actions-menu button:hover,
+.table-actions-menu button:focus-visible {
+  outline: none;
+  background: var(--floating-hover);
+}
+
+.table-menu-divider {
+  height: 1px;
+  margin: 4px 5px;
+  background: var(--floating-border);
+}
+
+.table-actions-menu .table-delete-action {
+  color: #a64e46;
+}
+
+.table-edge-control {
+  position: fixed;
+  z-index: 27;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--floating-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px #25272214;
+  font-size: 19px;
+}
+
+@keyframes table-control-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .formatting-toolbar.visible {
@@ -2126,7 +2333,10 @@ kbd {
   .formatting-toolbar,
   .toolbar-palette,
   .slash-command-menu,
-  .block-controls {
+  .block-controls,
+  .table-controls,
+  .table-actions-menu,
+  .table-edge-control {
     border-color: var(--floating-border);
     background: var(--floating-bg);
     box-shadow: 0 8px 26px #0007, 0 1px 3px #0005;
@@ -2205,6 +2415,19 @@ kbd {
   .block-control-button {
     width: 34px;
     height: 34px;
+  }
+
+  .table-control-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .table-edge-control {
+    display: none;
+  }
+
+  .table-actions-menu button {
+    min-height: 40px;
   }
 }
 

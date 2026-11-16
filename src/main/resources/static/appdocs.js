@@ -8,6 +8,10 @@ import Highlight from "https://esm.sh/@tiptap/extension-highlight@2.11.5";
 import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@2.11.5";
 import TaskList from "https://esm.sh/@tiptap/extension-task-list@2.11.5";
 import TaskItem from "https://esm.sh/@tiptap/extension-task-item@2.11.5";
+import Table from "https://esm.sh/@tiptap/extension-table@2.11.5";
+import TableRow from "https://esm.sh/@tiptap/extension-table-row@2.11.5";
+import TableCell from "https://esm.sh/@tiptap/extension-table-cell@2.11.5";
+import TableHeader from "https://esm.sh/@tiptap/extension-table-header@2.11.5";
 
 const API_URL = "/api/documents";
 const SAVE_DELAY = 650;
@@ -101,6 +105,13 @@ const slashCommands = [
     keywords: "callout note",
     command: (chain) => chain.wrapIn("callout"),
   },
+  {
+    title: "Table",
+    icon: "▦",
+    description: "Insert a 3 × 3 table",
+    keywords: "table grid rows columns spreadsheet",
+    command: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: false }),
+  },
 ];
 
 const elements = {
@@ -132,6 +143,11 @@ const elements = {
   blockDragButton: document.querySelector("#block-drag-button"),
   blockDropIndicator: document.querySelector("#block-drop-indicator"),
   blockMoveStatus: document.querySelector("#block-move-status"),
+  tableControls: document.querySelector("#table-controls"),
+  tableActionsTrigger: document.querySelector("#table-actions-trigger"),
+  tableActionsMenu: document.querySelector("#table-actions-menu"),
+  tableAddRow: document.querySelector("#table-add-row"),
+  tableAddColumn: document.querySelector("#table-add-column"),
   breadcrumb: document.querySelector("#breadcrumb-title"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
@@ -203,6 +219,7 @@ let currentBlock = null;
 let activeBlockDrag = null;
 let blockDropPosition = null;
 let touchBlockDrag = null;
+let activeTable = null;
 
 function setSaveStatus(status, text) {
   elements.saveStatus.classList.remove("saving", "error");
@@ -494,7 +511,7 @@ function editorContentFromStored(content) {
   if (!content) {
     return "";
   }
-  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
+  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
     return content;
   }
   return content.split(/\n{2,}/u)
@@ -508,23 +525,46 @@ function contentToPlainText(content) {
   }
 
   const parsed = new DOMParser().parseFromString(content, "text/html");
-  const blockTags = new Set(["BLOCKQUOTE", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "UL"]);
+  const blockTags = new Set(["BLOCKQUOTE", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "TR", "UL"]);
   let text = "";
+  let tableCellDepth = 0;
+  let cellHasBlockText = false;
   const appendLineBreak = () => {
     if (text && !text.endsWith("\n")) {
       text += "\n";
     }
   };
+  const trimTrailingLineBreaks = () => {
+    text = text.replace(/\n+$/u, "");
+  };
   const visit = (node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       text += node.nodeValue;
+      if (tableCellDepth > 0 && node.nodeValue) {
+        cellHasBlockText = true;
+      }
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) {
       return;
     }
+    if (
+      node.nodeType === Node.ELEMENT_NODE
+      && (node.tagName === "TD" || node.tagName === "TH")
+    ) {
+      if (node.previousElementSibling) {
+        text += "\t";
+      }
+      tableCellDepth += 1;
+      cellHasBlockText = false;
+    }
     const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName);
-    if (isBlock) {
+    if (isBlock && tableCellDepth > 0) {
+      if (cellHasBlockText) {
+        appendLineBreak();
+        cellHasBlockText = false;
+      }
+    } else if (isBlock) {
       appendLineBreak();
     }
     if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "BR") {
@@ -532,8 +572,16 @@ function contentToPlainText(content) {
     } else {
       node.childNodes.forEach(visit);
     }
-    if (isBlock) {
+    if (isBlock && tableCellDepth === 0) {
       appendLineBreak();
+    }
+    if (
+      node.nodeType === Node.ELEMENT_NODE
+      && (node.tagName === "TD" || node.tagName === "TH")
+    ) {
+      trimTrailingLineBreaks();
+      tableCellDepth -= 1;
+      cellHasBlockText = false;
     }
   };
   visit(parsed.body);
@@ -672,6 +720,7 @@ function renderEditor() {
   const activeDocument = documents.find((document) => document.id === activeDocumentId);
   const hasDocument = Boolean(activeDocument);
   hideBlockControls();
+  hideTableControls();
   elements.welcome.hidden = hasDocument;
   elements.editor.hidden = !hasDocument;
   elements.deleteButton.disabled = !hasDocument;
@@ -1166,6 +1215,193 @@ function startTouchBlockDrag(event) {
     return;
   }
   beginBlockDrag(touchBlockDrag.block);
+}
+
+function getTableContextAtPosition(position) {
+  let context = null;
+  textEditor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "table" || pos !== position) {
+      return;
+    }
+    const nodeDom = textEditor.view.nodeDOM(pos);
+    const table = nodeDom instanceof Element
+      ? (nodeDom.matches("table") ? nodeDom : nodeDom.querySelector("table"))
+      : null;
+    if (table) {
+      context = {
+        node,
+        pos,
+        table,
+        wrapper: table.closest(".tableWrapper") || table,
+      };
+    }
+    return false;
+  });
+  return context;
+}
+
+function getTableContextFromTarget(target) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  const table = target.closest("table");
+  if (!table) {
+    return null;
+  }
+  let context = null;
+  textEditor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "table") {
+      return;
+    }
+    const nodeDom = textEditor.view.nodeDOM(pos);
+    if (nodeDom instanceof Element && (nodeDom === table || nodeDom.contains(table))) {
+      context = {
+        node,
+        pos,
+        table,
+        wrapper: table.closest(".tableWrapper") || table,
+      };
+      return false;
+    }
+  });
+  return context;
+}
+
+function getTableContextFromSelection() {
+  const selection = textEditor.state.selection;
+  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+    if (selection.$from.node(depth).type.name === "table") {
+      return getTableContextAtPosition(selection.$from.before(depth));
+    }
+  }
+  return null;
+}
+
+function closeTableActionsMenu(returnFocus = false) {
+  elements.tableActionsMenu.hidden = true;
+  elements.tableActionsTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) {
+    elements.tableActionsTrigger.focus();
+  }
+}
+
+function hideTableControls() {
+  activeTable = null;
+  closeTableActionsMenu();
+  elements.tableControls.classList.remove("visible");
+  elements.tableControls.hidden = true;
+  elements.tableAddRow.hidden = true;
+  elements.tableAddColumn.hidden = true;
+}
+
+function positionTableControls() {
+  if (!activeTable?.wrapper?.isConnected || elements.tableControls.hidden) {
+    return;
+  }
+  const bounds = activeTable.wrapper.getBoundingClientRect();
+  const triggerBounds = elements.tableControls.getBoundingClientRect();
+  const padding = 6;
+  const left = Math.max(
+    padding,
+    Math.min(bounds.right - triggerBounds.width, window.innerWidth - triggerBounds.width - padding),
+  );
+  const above = bounds.top - triggerBounds.height - 5;
+  elements.tableControls.style.left = `${left}px`;
+  elements.tableControls.style.top = `${above >= padding ? above : Math.min(bounds.top + 5, window.innerHeight - triggerBounds.height - padding)}px`;
+
+  const rowBounds = elements.tableAddRow.getBoundingClientRect();
+  const rowLeft = Math.max(
+    padding,
+    Math.min(bounds.left + (bounds.width - rowBounds.width) / 2, window.innerWidth - rowBounds.width - padding),
+  );
+  elements.tableAddRow.style.left = `${rowLeft}px`;
+  elements.tableAddRow.style.top = `${Math.max(padding, Math.min(bounds.bottom - rowBounds.height / 2, window.innerHeight - rowBounds.height - padding))}px`;
+
+  const columnBounds = elements.tableAddColumn.getBoundingClientRect();
+  elements.tableAddColumn.style.left = `${Math.max(padding, Math.min(bounds.right - columnBounds.width / 2, window.innerWidth - columnBounds.width - padding))}px`;
+  elements.tableAddColumn.style.top = `${Math.max(padding, Math.min(bounds.top + (bounds.height - columnBounds.height) / 2, window.innerHeight - columnBounds.height - padding))}px`;
+  if (!elements.tableActionsMenu.hidden) {
+    positionTableMenu();
+  }
+}
+
+function positionTableMenu() {
+  const controlBounds = elements.tableControls.getBoundingClientRect();
+  const menuBounds = elements.tableActionsMenu.getBoundingClientRect();
+  const padding = 8;
+  const left = Math.max(
+    padding,
+    Math.min(controlBounds.right - menuBounds.width, window.innerWidth - menuBounds.width - padding),
+  );
+  const below = controlBounds.bottom + 5;
+  const top = below + menuBounds.height <= window.innerHeight - padding
+    ? below
+    : Math.max(padding, controlBounds.top - menuBounds.height - 5);
+  elements.tableActionsMenu.style.left = `${left}px`;
+  elements.tableActionsMenu.style.top = `${top}px`;
+}
+
+function showTableControls(context) {
+  if (!context?.wrapper?.isConnected) {
+    hideTableControls();
+    return;
+  }
+  if (activeTable?.pos !== context.pos) {
+    closeTableActionsMenu();
+  }
+  activeTable = context;
+  elements.tableControls.hidden = false;
+  elements.tableAddRow.hidden = false;
+  elements.tableAddColumn.hidden = false;
+  elements.tableControls.classList.add("visible");
+  positionTableControls();
+}
+
+function addParagraphAfterTable() {
+  if (!activeTable) {
+    return;
+  }
+  const position = activeTable.pos + activeTable.node.nodeSize;
+  const inserted = textEditor.chain()
+    .focus()
+    .insertContentAt(position, { type: "paragraph" })
+    .setTextSelection(position + 1)
+    .run();
+  if (!inserted) {
+    showToast("Couldn't add a paragraph after this table.");
+  }
+}
+
+function runTableAction(action) {
+  if (!activeTable) {
+    return;
+  }
+  closeTableActionsMenu();
+  if (action === "addParagraphAfterTable") {
+    addParagraphAfterTable();
+    return;
+  }
+
+  const command = {
+    addRowBefore: "addRowBefore",
+    addRowAfter: "addRowAfter",
+    deleteRow: "deleteRow",
+    addColumnBefore: "addColumnBefore",
+    addColumnAfter: "addColumnAfter",
+    deleteColumn: "deleteColumn",
+    toggleHeaderRow: "toggleHeaderRow",
+    deleteTable: "deleteTable",
+  }[action];
+  if (!command) {
+    return;
+  }
+  const changed = textEditor.chain().focus()[command]().run();
+  if (!changed) {
+    showToast("Couldn't update the table. Select a cell and try again.");
+  }
+  if (action === "deleteTable") {
+    hideTableControls();
+  }
 }
 
 function moveSlashSelection(offset) {
@@ -1784,6 +2020,11 @@ elements.accountModeToggle.addEventListener("click", () => {
   elements.accountEmailInput.value = email;
 });
 elements.accountForm.addEventListener("submit", (event) => void submitAccountForm(event));
+document.addEventListener("pointerdown", (event) => {
+  if (!elements.tableControls.contains(event.target) && !elements.tableActionsMenu.hidden) {
+    closeTableActionsMenu();
+  }
+});
 document.addEventListener("click", (event) => {
   if (!elements.accountMenu.contains(event.target)) {
     closeAccountMenu();
@@ -1801,6 +2042,67 @@ elements.slashMenu.addEventListener("click", (event) => {
   const option = event.target.closest(".slash-command-option");
   if (option) {
     runSlashCommand(Number(option.dataset.commandIndex));
+  }
+});
+elements.tableControls.addEventListener("mousedown", (event) => {
+  if (event.target.closest("button")) {
+    event.preventDefault();
+  }
+});
+elements.tableActionsTrigger.addEventListener("click", () => {
+  const opening = elements.tableActionsMenu.hidden;
+  elements.tableActionsMenu.hidden = !opening;
+  elements.tableActionsTrigger.setAttribute("aria-expanded", String(opening));
+  if (opening) {
+    positionTableMenu();
+    elements.tableActionsMenu.querySelector("[role='menuitem']").focus();
+  }
+});
+elements.tableActionsMenu.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-table-action]");
+  if (action) {
+    runTableAction(action.dataset.tableAction);
+  }
+});
+elements.tableActionsMenu.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeTableActionsMenu(true);
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+    return;
+  }
+  event.preventDefault();
+  const items = Array.from(elements.tableActionsMenu.querySelectorAll("[role='menuitem']"));
+  const currentIndex = items.indexOf(document.activeElement);
+  const offset = event.key === "ArrowDown" ? 1 : -1;
+  items[(currentIndex + offset + items.length) % items.length].focus();
+});
+for (const control of [elements.tableControls, elements.tableAddRow, elements.tableAddColumn]) {
+  control.addEventListener("pointerleave", (event) => {
+    if (
+      !elements.content.contains(event.relatedTarget)
+      && !elements.tableControls.contains(event.relatedTarget)
+      && !elements.tableAddRow.contains(event.relatedTarget)
+      && !elements.tableAddColumn.contains(event.relatedTarget)
+      && !elements.tableActionsMenu.contains(document.activeElement)
+    ) {
+      hideTableControls();
+    }
+  });
+}
+for (const button of [elements.tableAddRow, elements.tableAddColumn]) {
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+}
+elements.tableAddRow.addEventListener("click", () => {
+  if (!textEditor.chain().focus().addRowAfter().run()) {
+    showToast("Couldn't add a row. Select a table cell and try again.");
+  }
+});
+elements.tableAddColumn.addEventListener("click", () => {
+  if (!textEditor.chain().focus().addColumnAfter().run()) {
+    showToast("Couldn't add a column. Select a table cell and try again.");
   }
 });
 elements.blockControls.addEventListener("mousedown", (event) => {
@@ -1865,6 +2167,12 @@ elements.blockControls.addEventListener("pointerleave", (event) => {
   }
 });
 elements.content.addEventListener("pointermove", (event) => {
+  const tableContext = getTableContextFromTarget(event.target);
+  if (tableContext) {
+    showTableControls(tableContext);
+  } else if (!elements.tableActionsMenu.contains(document.activeElement)) {
+    hideTableControls();
+  }
   if (!activeBlockDrag && !touchBlockDrag) {
     const block = getBlockFromTarget(event.target);
     if (block) {
@@ -1873,6 +2181,14 @@ elements.content.addEventListener("pointermove", (event) => {
   }
 });
 elements.content.addEventListener("pointerleave", (event) => {
+  if (
+    !elements.tableControls.contains(event.relatedTarget)
+    && !elements.tableAddRow.contains(event.relatedTarget)
+    && !elements.tableAddColumn.contains(event.relatedTarget)
+    && !elements.tableActionsMenu.contains(document.activeElement)
+  ) {
+    hideTableControls();
+  }
   if (
     !elements.blockControls.contains(event.relatedTarget)
     && !textEditor.isFocused
@@ -1909,6 +2225,15 @@ textEditor = new Editor({
     TaskList,
     TaskItem.configure({ nested: true }),
     Callout,
+    Table.configure({
+      resizable: true,
+      cellMinWidth: 96,
+      lastColumnResizable: true,
+      allowTableNodeSelection: true,
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
   ],
   editorProps: {
     attributes: {
@@ -1954,6 +2279,12 @@ textEditor = new Editor({
         addBlockAfterCurrent();
         return true;
       }
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter"
+          && getTableContextFromSelection()) {
+        event.preventDefault();
+        addParagraphAfterTable();
+        return true;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         if (textEditor.state.selection.empty && !textEditor.isActive("link")) {
           return false;
@@ -1971,6 +2302,7 @@ textEditor = new Editor({
     syncSlashMenu();
     if (textEditor.isFocused) {
       showBlockControls(getBlockAtSelection());
+      showTableControls(getTableContextFromSelection());
     }
   },
   onSelectionUpdate() {
@@ -1978,12 +2310,14 @@ textEditor = new Editor({
     syncSlashMenu();
     if (textEditor.isFocused) {
       showBlockControls(getBlockAtSelection());
+      showTableControls(getTableContextFromSelection());
     }
   },
   onFocus() {
     updateFormattingToolbar();
     syncSlashMenu();
     showBlockControls(getBlockAtSelection());
+    showTableControls(getTableContextFromSelection());
   },
   onBlur() {
     window.setTimeout(() => {
@@ -1995,6 +2329,13 @@ textEditor = new Editor({
       }
       if (!elements.blockControls.contains(document.activeElement)) {
         hideBlockControls();
+      }
+      if (
+        !elements.tableControls.contains(document.activeElement)
+        && !elements.tableAddRow.contains(document.activeElement)
+        && !elements.tableAddColumn.contains(document.activeElement)
+      ) {
+        hideTableControls();
       }
     }, 0);
   },
@@ -2008,6 +2349,7 @@ window.addEventListener("resize", () => {
     positionSlashMenu();
   }
   positionBlockControls();
+  positionTableControls();
 });
 window.addEventListener("scroll", () => {
   if (!elements.toolbar.hidden) {
@@ -2017,6 +2359,7 @@ window.addEventListener("scroll", () => {
     positionSlashMenu();
   }
   positionBlockControls();
+  positionTableControls();
 }, true);
 
 document.addEventListener("keydown", (event) => {

@@ -219,6 +219,24 @@
           <div class="block-drop-indicator" id="block-drop-indicator" aria-hidden="true" hidden></div>
           <p class="visually-hidden" id="block-move-status" role="status" aria-live="polite"></p>
           <p class="visually-hidden" id="block-move-help">Drag the handle to reorder this block, or press Alt+Up and Alt+Down to move it. Press Alt+Enter in the editor to add a block.</p>
+          <div class="table-controls" id="table-controls" role="group" aria-label="Table controls" hidden>
+            <button class="table-control-button table-actions-trigger" id="table-actions-trigger" type="button" aria-label="Table actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
+            <div class="table-actions-menu" id="table-actions-menu" role="menu" aria-label="Table actions" hidden>
+              <button type="button" role="menuitem" data-table-action="addRowBefore">Insert row above</button>
+              <button type="button" role="menuitem" data-table-action="addRowAfter">Insert row below</button>
+              <button type="button" role="menuitem" data-table-action="deleteRow">Delete row</button>
+              <span class="table-menu-divider" role="separator"></span>
+              <button type="button" role="menuitem" data-table-action="addColumnBefore">Insert column before</button>
+              <button type="button" role="menuitem" data-table-action="addColumnAfter">Insert column after</button>
+              <button type="button" role="menuitem" data-table-action="deleteColumn">Delete column</button>
+              <span class="table-menu-divider" role="separator"></span>
+              <button type="button" role="menuitem" data-table-action="toggleHeaderRow">Toggle header row</button>
+              <button type="button" role="menuitem" data-table-action="addParagraphAfterTable">Add paragraph after table</button>
+              <button type="button" role="menuitem" class="table-delete-action" data-table-action="deleteTable">Delete table</button>
+            </div>
+          </div>
+          <button class="table-edge-control table-add-row" id="table-add-row" type="button" aria-label="Add row below" title="Add row below" hidden>+</button>
+          <button class="table-edge-control table-add-column" id="table-add-column" type="button" aria-label="Add column after" title="Add column after" hidden>+</button>
         </section>
         <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
           <div class="account-dialog-header">

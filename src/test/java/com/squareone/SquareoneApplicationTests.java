@@ -135,6 +135,38 @@ class SquareoneApplicationTests {
 	}
 
 	@Test
+	void exportsTablesAsWordTablesAndReadablePdfAndText() throws Exception {
+		Document document = sampleDocument();
+		document.setContent("""
+				<p>Before the table</p>
+				<table><tbody>
+				  <tr><th><p>Item</p></th><th><p>Count</p></th></tr>
+				  <tr><td><p>Tea</p></td><td><p>2</p></td></tr>
+				</tbody></table>
+				<p>After the table</p>
+				""");
+
+		String text = new String(plainTextDocumentExporter.export(document), StandardCharsets.UTF_8);
+		assertThat(text).contains("Item\tCount", "Tea\t2");
+
+		String pdf = new String(pdfDocumentExporter.export(document), StandardCharsets.ISO_8859_1);
+		assertThat(pdf).contains("Item", "Count", "Tea", " re S Q");
+
+		Map<String, String> wordEntries = new HashMap<>();
+		try (ZipInputStream wordFile = new ZipInputStream(
+				new java.io.ByteArrayInputStream(wordDocumentExporter.export(document)))) {
+			ZipEntry entry;
+			while ((entry = wordFile.getNextEntry()) != null) {
+				ByteArrayOutputStream contents = new ByteArrayOutputStream();
+				wordFile.transferTo(contents);
+				wordEntries.put(entry.getName(), contents.toString(StandardCharsets.UTF_8));
+			}
+		}
+		assertThat(wordEntries.get("word/document.xml"))
+				.contains("<w:tbl>", "<w:tblHeader/>", "<w:tc>", "Item", "Tea", "Count");
+	}
+
+	@Test
 	void exportsWordDocumentWithTitleAndContent() throws Exception {
 		byte[] wordBytes = wordDocumentExporter.export(sampleDocument());
 

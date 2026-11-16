@@ -12,6 +12,10 @@ import org.springframework.stereotype.Component;
 
 import com.squareone.model.Document;
 import com.squareone.util.DocumentContentText;
+import com.squareone.util.DocumentContentText.Block;
+import com.squareone.util.DocumentContentText.TableBlock;
+import com.squareone.util.DocumentContentText.TableRow;
+import com.squareone.util.DocumentContentText.TextBlock;
 
 @Component
 public class PdfDocumentExporter implements DocumentExporter {
@@ -60,20 +64,23 @@ public class PdfDocumentExporter implements DocumentExporter {
         }
         currentPage.add("q 0.86 0.87 0.84 RG 0.8 w 58 " + (titleY - 9)
                 + " m 537 " + (titleY - 9) + " l S Q");
-        int bodyY = titleY - 62;
+        PageCursor cursor = new PageCursor(pages, currentPage, titleY - 62, document.getTitle());
 
-        String content = DocumentContentText.toPlainText(document.getContent());
-        for (String line : wrapText(pdfText(content), MAX_BODY_LINE_LENGTH)) {
-            if (bodyY < PAGE_MARGIN + BODY_LINE_HEIGHT) {
-                pages.add(currentPage);
-                currentPage = createContinuationPage(document.getTitle());
-                bodyY = PAGE_HEIGHT - PAGE_MARGIN - 38;
+        for (Block block : DocumentContentText.toBlocks(document.getContent())) {
+            if (block instanceof TextBlock textBlock) {
+                for (String line : wrapText(pdfText(textBlock.text()), MAX_BODY_LINE_LENGTH)) {
+                    if (cursor.bodyY < PAGE_MARGIN + BODY_LINE_HEIGHT) {
+                        startContinuationPage(cursor);
+                    }
+                    addText(cursor.page, "F1", 11, PAGE_MARGIN, cursor.bodyY, line);
+                    cursor.bodyY -= BODY_LINE_HEIGHT;
+                }
+            } else if (block instanceof TableBlock tableBlock) {
+                drawTable(cursor, tableBlock);
             }
-            addText(currentPage, "F1", 11, PAGE_MARGIN, bodyY, line);
-            bodyY -= BODY_LINE_HEIGHT;
         }
 
-        pages.add(currentPage);
+        pages.add(cursor.page);
         for (int index = 0; index < pages.size(); index++) {
             List<String> page = pages.get(index);
             page.add("q 0.86 0.87 0.84 RG 0.6 w 58 52 m 537 52 l S Q");
@@ -82,6 +89,80 @@ public class PdfDocumentExporter implements DocumentExporter {
                     (index + 1) + " / " + pages.size());
         }
         return pages;
+    }
+
+    private void drawTable(PageCursor cursor, TableBlock table) {
+        int columnCount = table.rows().stream().mapToInt(row -> row.cells().size()).max().orElse(0);
+        if (columnCount == 0) {
+            return;
+        }
+
+        int tableWidth = PAGE_WIDTH - PAGE_MARGIN * 2;
+        double cellWidth = (double) tableWidth / columnCount;
+        for (TableRow row : table.rows()) {
+            List<List<String>> cellLines = new ArrayList<>();
+            int rowLineCount = 1;
+            for (int column = 0; column < columnCount; column++) {
+                String value = column < row.cells().size() ? row.cells().get(column) : "";
+                int maxCharacters = Math.max(1, (int) ((cellWidth - 10) / 5.2));
+                List<String> lines = wrapText(pdfText(value), maxCharacters);
+                cellLines.add(lines);
+                rowLineCount = Math.max(rowLineCount, lines.size());
+            }
+
+            int lineOffset = 0;
+            while (lineOffset < rowLineCount) {
+                int availableLines = (cursor.bodyY - PAGE_MARGIN - 16 - 8) / 11;
+                if (availableLines <= 0) {
+                    startContinuationPage(cursor);
+                    continue;
+                }
+                int segmentLines = Math.min(availableLines, rowLineCount - lineOffset);
+                int rowHeight = segmentLines * 11 + 8;
+                int rowBottom = cursor.bodyY - rowHeight;
+                for (int column = 0; column < columnCount; column++) {
+                    int cellLeft = PAGE_MARGIN + (int) Math.round(column * cellWidth);
+                    int cellRight = PAGE_MARGIN + (int) Math.round((column + 1) * cellWidth);
+                    int cellWidthPoints = cellRight - cellLeft;
+                    if (row.header()) {
+                        cursor.page.add("q 0.94 0.95 0.93 rg " + cellLeft + " " + rowBottom + " "
+                                + cellWidthPoints + " " + rowHeight + " re f Q");
+                    }
+                    cursor.page.add("q 0.78 0.80 0.76 RG 0.5 w " + cellLeft + " " + rowBottom + " "
+                            + cellWidthPoints + " " + rowHeight + " re S Q");
+                    List<String> lines = cellLines.get(column);
+                    for (int line = lineOffset; line < Math.min(lineOffset + segmentLines, lines.size()); line++) {
+                        addText(cursor.page, row.header() ? "F2" : "F1", 9, cellLeft + 5,
+                                cursor.bodyY - 13 - (line - lineOffset) * 11, lines.get(line));
+                    }
+                }
+                cursor.bodyY = rowBottom;
+                lineOffset += segmentLines;
+                if (lineOffset < rowLineCount) {
+                    startContinuationPage(cursor);
+                }
+            }
+        }
+    }
+
+    private void startContinuationPage(PageCursor cursor) {
+        cursor.pages.add(cursor.page);
+        cursor.page = createContinuationPage(cursor.title);
+        cursor.bodyY = PAGE_HEIGHT - PAGE_MARGIN - 38;
+    }
+
+    private static final class PageCursor {
+        private final List<List<String>> pages;
+        private final String title;
+        private List<String> page;
+        private int bodyY;
+
+        private PageCursor(List<List<String>> pages, List<String> page, int bodyY, String title) {
+            this.pages = pages;
+            this.page = page;
+            this.bodyY = bodyY;
+            this.title = title;
+        }
     }
 
     private List<String> createContinuationPage(String title) {
