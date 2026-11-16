@@ -1368,6 +1368,112 @@ kbd {
   font-size: 12px;
 }
 
+.block-controls {
+  position: fixed;
+  z-index: 25;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--floating-border);
+  border-radius: 7px;
+  background: var(--floating-bg);
+  box-shadow: 0 3px 12px #25272214;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+
+.block-controls[hidden] {
+  display: none;
+}
+
+.block-controls.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.block-controls.is-dragging {
+  opacity: 0.55;
+}
+
+.block-control-button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.block-control-button:hover,
+.block-control-button:focus-visible {
+  outline: none;
+  background: var(--floating-hover);
+  color: var(--ink);
+}
+
+.block-insert-button span {
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.block-drag-button {
+  cursor: grab;
+  touch-action: none;
+}
+
+.block-drag-button:active {
+  cursor: grabbing;
+}
+
+.block-drag-button svg {
+  width: 12px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.block-drop-indicator {
+  position: fixed;
+  z-index: 26;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.block-drop-indicator::before {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+}
+
+.block-drop-indicator[hidden] {
+  display: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .formatting-toolbar.visible {
   opacity: 1;
   pointer-events: auto;
@@ -2019,7 +2125,8 @@ kbd {
 
   .formatting-toolbar,
   .toolbar-palette,
-  .slash-command-menu {
+  .slash-command-menu,
+  .block-controls {
     border-color: var(--floating-border);
     background: var(--floating-bg);
     box-shadow: 0 8px 26px #0007, 0 1px 3px #0005;
@@ -2092,6 +2199,13 @@ kbd {
     color: #e9a395;
   }
 
+}
+
+@media (pointer: coarse) {
+  .block-control-button {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

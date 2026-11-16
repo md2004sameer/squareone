@@ -13,8 +13,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/stylesdocs.css?v=14" />
-    <script type="module" src="/appdocs.js?v=13"></script>
+    <link rel="stylesheet" href="/stylesdocs.css?v=15" />
+    <script type="module" src="/appdocs.js?v=14"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -201,6 +201,24 @@
             <div class="slash-command-options" id="slash-command-options"></div>
             <p class="slash-command-empty" id="slash-command-empty" hidden>No matching commands</p>
           </div>
+          <div class="block-controls" id="block-controls" role="group" aria-label="Block controls" hidden>
+            <button class="block-control-button block-insert-button" id="block-insert-button" type="button" aria-label="Add a block after this block" title="Add a block">
+              <span aria-hidden="true">+</span>
+            </button>
+            <button class="block-control-button block-drag-button" id="block-drag-button" type="button" draggable="true" aria-label="Move block" aria-describedby="block-move-help" title="Drag to move · Alt + ↑/↓ to reorder">
+              <svg viewBox="0 0 12 16" aria-hidden="true">
+                <circle cx="4" cy="3" r="1.25"></circle>
+                <circle cx="8" cy="3" r="1.25"></circle>
+                <circle cx="4" cy="8" r="1.25"></circle>
+                <circle cx="8" cy="8" r="1.25"></circle>
+                <circle cx="4" cy="13" r="1.25"></circle>
+                <circle cx="8" cy="13" r="1.25"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="block-drop-indicator" id="block-drop-indicator" aria-hidden="true" hidden></div>
+          <p class="visually-hidden" id="block-move-status" role="status" aria-live="polite"></p>
+          <p class="visually-hidden" id="block-move-help">Drag the handle to reorder this block, or press Alt+Up and Alt+Down to move it. Press Alt+Enter in the editor to add a block.</p>
         </section>
         <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
           <div class="account-dialog-header">

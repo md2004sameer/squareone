@@ -126,6 +126,12 @@ const elements = {
   slashMenu: document.querySelector("#slash-command-menu"),
   slashOptions: document.querySelector("#slash-command-options"),
   slashEmpty: document.querySelector("#slash-command-empty"),
+  editorWrap: document.querySelector(".editor-wrap"),
+  blockControls: document.querySelector("#block-controls"),
+  blockInsertButton: document.querySelector("#block-insert-button"),
+  blockDragButton: document.querySelector("#block-drag-button"),
+  blockDropIndicator: document.querySelector("#block-drop-indicator"),
+  blockMoveStatus: document.querySelector("#block-move-status"),
   breadcrumb: document.querySelector("#breadcrumb-title"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
@@ -193,6 +199,10 @@ let slashRange = null;
 let slashMatches = [];
 let slashActiveIndex = 0;
 let slashQuery = null;
+let currentBlock = null;
+let activeBlockDrag = null;
+let blockDropPosition = null;
+let touchBlockDrag = null;
 
 function setSaveStatus(status, text) {
   elements.saveStatus.classList.remove("saving", "error");
@@ -661,6 +671,7 @@ function renderList() {
 function renderEditor() {
   const activeDocument = documents.find((document) => document.id === activeDocumentId);
   const hasDocument = Boolean(activeDocument);
+  hideBlockControls();
   elements.welcome.hidden = hasDocument;
   elements.editor.hidden = !hasDocument;
   elements.deleteButton.disabled = !hasDocument;
@@ -911,6 +922,250 @@ function syncSlashMenu() {
   elements.content.setAttribute("aria-expanded", "true");
   renderSlashOptions(trigger[2]);
   positionSlashMenu();
+}
+
+function getTopLevelBlocks() {
+  const blocks = [];
+  textEditor.state.doc.forEach((node, pos) => {
+    blocks.push({ node, pos, dom: textEditor.view.nodeDOM(pos) });
+  });
+  return blocks;
+}
+
+function getBlockAtPosition(position) {
+  return getTopLevelBlocks().find((block) => block.pos === position) || null;
+}
+
+function getBlockFromTarget(target) {
+  if (!(target instanceof Element) || !elements.content.contains(target)) {
+    return null;
+  }
+  let blockElement = target;
+  while (blockElement.parentElement && blockElement.parentElement !== elements.content) {
+    blockElement = blockElement.parentElement;
+  }
+  return getTopLevelBlocks().find((block) => block.dom === blockElement) || null;
+}
+
+function getBlockAtSelection() {
+  const selection = textEditor.state.selection;
+  return getTopLevelBlocks()[selection.$from.index(0)] || null;
+}
+
+function blockLabel(node) {
+  const labels = {
+    blockquote: "quote",
+    bulletList: "bullet list",
+    callout: "callout",
+    codeBlock: "code block",
+    horizontalRule: "divider",
+    orderedList: "numbered list",
+    paragraph: "paragraph",
+    taskList: "to-do list",
+  };
+  if (node.type.name === "heading") {
+    return `heading ${node.attrs.level}`;
+  }
+  return labels[node.type.name] || "block";
+}
+
+function positionBlockControls() {
+  if (!currentBlock?.dom?.isConnected || elements.blockControls.hidden) {
+    return;
+  }
+  const blockBounds = currentBlock.dom.getBoundingClientRect();
+  const controlsBounds = elements.blockControls.getBoundingClientRect();
+  const left = Math.max(6, blockBounds.left - controlsBounds.width - 7);
+  const top = Math.max(
+    6,
+    Math.min(blockBounds.top, window.innerHeight - controlsBounds.height - 6),
+  );
+  elements.blockControls.style.left = `${left}px`;
+  elements.blockControls.style.top = `${top}px`;
+}
+
+function showBlockControls(block) {
+  if (!block?.dom?.isConnected || activeBlockDrag) {
+    return;
+  }
+  currentBlock = block;
+  elements.blockDragButton.setAttribute("aria-label", `Move ${blockLabel(block.node)} block`);
+  elements.blockInsertButton.setAttribute("aria-label", `Add a block after ${blockLabel(block.node)}`);
+  elements.blockControls.hidden = false;
+  elements.blockControls.classList.add("visible");
+  positionBlockControls();
+}
+
+function hideBlockControls() {
+  if (activeBlockDrag) {
+    return;
+  }
+  currentBlock = null;
+  elements.blockControls.classList.remove("visible");
+  elements.blockControls.hidden = true;
+}
+
+function announceBlockMove(block, direction) {
+  const blocks = getTopLevelBlocks();
+  const index = blocks.findIndex((entry) => entry.pos === block.pos);
+  elements.blockMoveStatus.textContent =
+    `${blockLabel(block.node)} moved ${direction}. Position ${index + 1} of ${blocks.length}.`;
+}
+
+function reorderBlock(from, targetPosition, direction = null) {
+  const state = textEditor.state;
+  const node = state.doc.nodeAt(from);
+  if (!node) {
+    return null;
+  }
+  const end = from + node.nodeSize;
+  if (targetPosition === from || targetPosition === end
+      || (targetPosition > from && targetPosition < end)) {
+    return null;
+  }
+
+  const insertionPosition = targetPosition > from ? targetPosition - node.nodeSize : targetPosition;
+  const transaction = state.tr
+    .delete(from, end)
+    .insert(insertionPosition, node);
+  textEditor.view.dispatch(transaction.scrollIntoView());
+
+  const movedBlock = getBlockAtPosition(insertionPosition);
+  if (movedBlock) {
+    showBlockControls(movedBlock);
+    if (direction) {
+      announceBlockMove(movedBlock, direction);
+    }
+  }
+  return movedBlock;
+}
+
+function moveBlockByDirection(block, direction) {
+  const blocks = getTopLevelBlocks();
+  const index = blocks.findIndex((entry) => entry.pos === block?.pos);
+  if (index < 0 || (direction < 0 && index === 0) || (direction > 0 && index === blocks.length - 1)) {
+    return false;
+  }
+  const targetPosition = direction < 0
+    ? blocks[index - 1].pos
+    : blocks[index + 1].pos + blocks[index + 1].node.nodeSize;
+  return Boolean(reorderBlock(
+    block.pos,
+    targetPosition,
+    direction < 0 ? "up" : "down",
+  ));
+}
+
+function addBlockAfterCurrent() {
+  const block = currentBlock || getBlockAtSelection();
+  if (!block) {
+    return;
+  }
+  const position = block.pos + block.node.nodeSize;
+  const inserted = textEditor.chain()
+    .focus()
+    .insertContentAt(position, {
+      type: "paragraph",
+      content: [{ type: "text", text: "/" }],
+    })
+    .setTextSelection(position + 2)
+    .run();
+  if (!inserted) {
+    showToast("Couldn't add a block here. Please try again.");
+  }
+}
+
+function dropTargetAt(clientX, clientY) {
+  const editorBounds = elements.editor.getBoundingClientRect();
+  if (clientX < editorBounds.left - 48 || clientX > editorBounds.right
+      || clientY < editorBounds.top || clientY > editorBounds.bottom) {
+    return null;
+  }
+  const blocks = getTopLevelBlocks().filter((block) => block.dom instanceof Element);
+  if (blocks.length === 0) {
+    return { position: textEditor.state.doc.content.size, top: elements.content.getBoundingClientRect().top };
+  }
+
+  for (const block of blocks) {
+    const bounds = block.dom.getBoundingClientRect();
+    if (clientY < bounds.top) {
+      return { position: block.pos, top: bounds.top };
+    }
+    if (clientY <= bounds.bottom) {
+      return clientY < bounds.top + bounds.height / 2
+        ? { position: block.pos, top: bounds.top }
+        : { position: block.pos + block.node.nodeSize, top: bounds.bottom };
+    }
+  }
+
+  const lastBlock = blocks.at(-1);
+  const lastBounds = lastBlock.dom.getBoundingClientRect();
+  return {
+    position: textEditor.state.doc.content.size,
+    top: lastBounds.bottom,
+  };
+}
+
+function updateBlockDropTarget(clientX, clientY) {
+  if (!activeBlockDrag) {
+    return;
+  }
+  const target = dropTargetAt(clientX, clientY);
+  if (!target || target.position === activeBlockDrag.from
+      || target.position === activeBlockDrag.from + activeBlockDrag.nodeSize) {
+    blockDropPosition = null;
+    elements.blockDropIndicator.hidden = true;
+    return;
+  }
+
+  blockDropPosition = target.position;
+  const contentBounds = elements.content.getBoundingClientRect();
+  elements.blockDropIndicator.style.left = `${contentBounds.left}px`;
+  elements.blockDropIndicator.style.top = `${target.top}px`;
+  elements.blockDropIndicator.style.width = `${contentBounds.width}px`;
+  elements.blockDropIndicator.hidden = false;
+}
+
+function beginBlockDrag(block, dataTransfer) {
+  if (!block) {
+    return;
+  }
+  activeBlockDrag = { from: block.pos, nodeSize: block.node.nodeSize };
+  elements.blockControls.classList.add("is-dragging");
+  if (dataTransfer) {
+    dataTransfer.effectAllowed = "move";
+    dataTransfer.setData("text/plain", blockLabel(block.node));
+  }
+}
+
+function finishBlockDrag(shouldMove) {
+  let movedBlock = null;
+  if (shouldMove && activeBlockDrag && blockDropPosition !== null) {
+    movedBlock = reorderBlock(activeBlockDrag.from, blockDropPosition);
+  }
+  activeBlockDrag = null;
+  blockDropPosition = null;
+  elements.blockControls.classList.remove("is-dragging");
+  elements.blockDropIndicator.hidden = true;
+  if (movedBlock) {
+    showBlockControls(movedBlock);
+  } else if (!elements.blockControls.hidden) {
+    positionBlockControls();
+  }
+}
+
+function startTouchBlockDrag(event) {
+  if (!touchBlockDrag || activeBlockDrag) {
+    return;
+  }
+  const distance = Math.hypot(
+    event.clientX - touchBlockDrag.startX,
+    event.clientY - touchBlockDrag.startY,
+  );
+  if (distance < 7) {
+    return;
+  }
+  beginBlockDrag(touchBlockDrag.block);
 }
 
 function moveSlashSelection(offset) {
@@ -1548,6 +1803,97 @@ elements.slashMenu.addEventListener("click", (event) => {
     runSlashCommand(Number(option.dataset.commandIndex));
   }
 });
+elements.blockControls.addEventListener("mousedown", (event) => {
+  if (!event.target.closest(".block-drag-button")) {
+    event.preventDefault();
+  }
+});
+elements.blockInsertButton.addEventListener("click", addBlockAfterCurrent);
+elements.blockDragButton.addEventListener("dragstart", (event) => {
+  if (!currentBlock) {
+    event.preventDefault();
+    return;
+  }
+  beginBlockDrag(currentBlock, event.dataTransfer);
+});
+elements.blockDragButton.addEventListener("dragend", () => finishBlockDrag(false));
+elements.blockDragButton.addEventListener("keydown", (event) => {
+  if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) {
+    return;
+  }
+  event.preventDefault();
+  moveBlockByDirection(currentBlock, event.key === "ArrowUp" ? -1 : 1);
+});
+elements.blockDragButton.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" || !currentBlock) {
+    return;
+  }
+  event.preventDefault();
+  touchBlockDrag = {
+    block: currentBlock,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+  };
+  elements.blockDragButton.setPointerCapture(event.pointerId);
+});
+elements.blockDragButton.addEventListener("pointermove", (event) => {
+  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  startTouchBlockDrag(event);
+  updateBlockDropTarget(event.clientX, event.clientY);
+});
+elements.blockDragButton.addEventListener("pointerup", (event) => {
+  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
+    return;
+  }
+  updateBlockDropTarget(event.clientX, event.clientY);
+  finishBlockDrag(Boolean(activeBlockDrag));
+  touchBlockDrag = null;
+});
+elements.blockDragButton.addEventListener("pointercancel", () => {
+  if (touchBlockDrag) {
+    finishBlockDrag(false);
+    touchBlockDrag = null;
+  }
+});
+elements.blockControls.addEventListener("pointerleave", (event) => {
+  if (!elements.content.contains(event.relatedTarget) && !textEditor.isFocused) {
+    hideBlockControls();
+  }
+});
+elements.content.addEventListener("pointermove", (event) => {
+  if (!activeBlockDrag && !touchBlockDrag) {
+    const block = getBlockFromTarget(event.target);
+    if (block) {
+      showBlockControls(block);
+    }
+  }
+});
+elements.content.addEventListener("pointerleave", (event) => {
+  if (
+    !elements.blockControls.contains(event.relatedTarget)
+    && !textEditor.isFocused
+  ) {
+    hideBlockControls();
+  }
+});
+elements.editorWrap.addEventListener("dragover", (event) => {
+  if (!activeBlockDrag) {
+    return;
+  }
+  event.preventDefault();
+  updateBlockDropTarget(event.clientX, event.clientY);
+});
+elements.editorWrap.addEventListener("drop", (event) => {
+  if (!activeBlockDrag) {
+    return;
+  }
+  event.preventDefault();
+  finishBlockDrag(true);
+});
 textEditor = new Editor({
   element: elements.content,
   extensions: [
@@ -1569,6 +1915,8 @@ textEditor = new Editor({
       class: "tiptap-content",
       role: "textbox",
       "aria-multiline": "true",
+      "aria-describedby": "block-move-help",
+      "aria-keyshortcuts": "Alt+ArrowUp Alt+ArrowDown Alt+Enter",
       "data-placeholder": "Begin with a thought...",
       spellcheck: "true",
     },
@@ -1595,6 +1943,17 @@ textEditor = new Editor({
           return true;
         }
       }
+      if (event.altKey && !event.metaKey && !event.ctrlKey
+          && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        moveBlockByDirection(getBlockAtSelection(), event.key === "ArrowUp" ? -1 : 1);
+        return true;
+      }
+      if (event.altKey && !event.metaKey && !event.ctrlKey && event.key === "Enter") {
+        event.preventDefault();
+        addBlockAfterCurrent();
+        return true;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
         if (textEditor.state.selection.empty && !textEditor.isActive("link")) {
           return false;
@@ -1610,14 +1969,21 @@ textEditor = new Editor({
     updateWordCount();
     scheduleSave();
     syncSlashMenu();
+    if (textEditor.isFocused) {
+      showBlockControls(getBlockAtSelection());
+    }
   },
   onSelectionUpdate() {
     updateFormattingToolbar();
     syncSlashMenu();
+    if (textEditor.isFocused) {
+      showBlockControls(getBlockAtSelection());
+    }
   },
   onFocus() {
     updateFormattingToolbar();
     syncSlashMenu();
+    showBlockControls(getBlockAtSelection());
   },
   onBlur() {
     window.setTimeout(() => {
@@ -1626,6 +1992,9 @@ textEditor = new Editor({
       }
       if (!elements.slashMenu.contains(document.activeElement)) {
         closeSlashMenu();
+      }
+      if (!elements.blockControls.contains(document.activeElement)) {
+        hideBlockControls();
       }
     }, 0);
   },
@@ -1638,6 +2007,7 @@ window.addEventListener("resize", () => {
   if (!elements.slashMenu.hidden) {
     positionSlashMenu();
   }
+  positionBlockControls();
 });
 window.addEventListener("scroll", () => {
   if (!elements.toolbar.hidden) {
@@ -1646,6 +2016,7 @@ window.addEventListener("scroll", () => {
   if (!elements.slashMenu.hidden) {
     positionSlashMenu();
   }
+  positionBlockControls();
 }, true);
 
 document.addEventListener("keydown", (event) => {
