@@ -6,11 +6,24 @@ The workspace includes a home page with recently edited notes and favorites, sor
 
 ## PostgreSQL / Neon
 
-Copy `.env.example` to `.env` and set the JDBC URL, database username, and password. The app reads this ignored local file on startup; deployment environment variables take precedence. Docker Compose also passes `.env` into the container. Never commit the real file.
+Copy `.env.example` to `.env` and set the JDBC URL, database username, and password. The app reads this ignored local file on startup; deployment environment variables take precedence. Docker Compose requires this file and passes it into the container. Never commit the real file.
 
 For Neon, retain `sslmode=require&channelBinding=require&currentSchema=squareone` in the JDBC URL and set `DATABASE_SCHEMA=squareone` as shown in the example. Flyway creates the schema and applies versioned migrations; Hibernate validates the resulting schema. An existing pre-Flyway database requires a backup and a one-time baseline at version `0`; follow the [production upgrade instructions](docs/production.md) before starting the upgraded app. Hibernate explicitly qualifies table names with that schema, which also works through Neon's connection pooler. Other application tables are left untouched. PostgreSQL stores document bodies as `text`, including long rich-text notes.
 
-Without database settings, Squareone falls back to the local H2 database at `./data/squareone`. Switching to PostgreSQL does not import or delete the H2 data. Stop the app before copying H2 files for a consistent backup. Use your database provider's backup and restore tools for PostgreSQL.
+Neon is the primary store for authentication and user data, including document text. Normal startup requires a PostgreSQL JDBC URL, username, and password; missing settings or an H2 URL stop startup. H2 remains available for isolated automated tests under the explicit `h2-test` profile. Production rejects H2 even when that test profile is active. Existing local H2 files are retained and are not automatically imported into Neon.
+
+Login retrieves the account by email from `squareone.app_users` and verifies its BCrypt password hash on the server. Signup, profile changes and password changes write back to Neon. Plaintext passwords and database credentials are never saved in browser storage.
+
+| User data | Neon tables |
+| --- | --- |
+| Account profile, email, password hash and account status | `app_users` |
+| Workspace names, ownership and descriptions | `workspaces` |
+| Document HTML/JSON, hierarchy, favorites, archive, Trash, icons and cover references | `documents` |
+| Saved revisions and restore checkpoints | `document_versions` |
+| Registered users' theme, writing and sidebar preferences | `user_preferences` |
+| Account and guest sessions | `spring_session`, `spring_session_attributes` |
+
+Browser document drafts and preference caches support recovery and pending synchronization. Neon holds the persistent server records; guest display preferences remain browser-scoped.
 
 ## Production
 
@@ -39,7 +52,7 @@ Set `APP_PORT` if port `8080` is already in use. Stop the service with `docker c
 
 Squareone opens in a private guest workspace; signing up is optional. Guest documents are scoped to the browser's server session. Creating an account or logging in transfers that session's documents to the account. Registered users can only list, read, update, delete, export, and share their own documents. Sessions use HTTP-only, same-site cookies and CSRF protection. Set `SESSION_COOKIE_SECURE=true` when serving Squareone over HTTPS.
 
-Documents are stored in the configured database and survive container recreation. With PostgreSQL, storage and backups are managed by the external database. With the default H2 configuration, the named `squareone-data` volume holds the database; stop the app before backing it up. `docker compose down -v` deletes that local volume and its H2 documents.
+Documents are stored in Neon and survive container recreation. Storage and backups are managed by Neon. Docker Compose does not create a separate local database or data volume. Local H2 files or volumes from older releases remain available for an explicit, reviewed migration; changing the connection does not copy their contents.
 
 While editing, the browser also keeps a local copy of each document. Copies are scoped to the current guest session or account, refreshed as you type, and expire 30 days after the most recent edit. Unsynced edits or newer local copies are restored and synchronized when the app loads. Clearing browser site data removes these copies; the server database remains the primary persistent store. Account switching requires pending edits to sync first.
 
@@ -52,11 +65,10 @@ Accounts are stored in the configured database. Guest access depends on the brow
 ## Run locally without Docker
 
 ```sh
-mkdir -p data
 ./gradlew bootRun
 ```
 
-The app reads `.env` when present; otherwise the local H2 database is written to `./data/squareone`.
+The app reads Neon settings from the ignored `.env` or deployment environment. Keep the `production` profile for the HTTPS host and use the default profile for HTTP localhost. Database settings are required in both cases.
 
 In VS Code, select **Squareone (Gradle runtime)** in Run and Debug, then press **F5**. Its pre-launch task builds the application classes and copies Gradle's resolved runtime dependencies to `build/vscode-runtime`. This includes the PostgreSQL driver, Flyway database support, and JDBC sessions even if VS Code's imported Gradle model is stale. Stop any existing Squareone process on port 8080 before starting another instance.
 

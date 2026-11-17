@@ -26,6 +26,7 @@ import com.squareone.export.WordDocumentExporter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(properties = {
+        "spring.profiles.active=h2-test",
         "spring.config.import=",
         "DATABASE_SCHEMA=PUBLIC",
         "spring.datasource.username=sa", "spring.datasource.password=",

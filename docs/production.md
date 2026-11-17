@@ -16,7 +16,7 @@ The public domain currently responds through Render. The repository includes a D
    SPRING_SQL_INIT_MODE=never
    ```
 
-   Keep credentials in Render's environment settings. `PORT` comes from Render and is supported by the application. The production profile requires PostgreSQL and enables Secure cookies. Use a separate database for local development.
+   Keep credentials in Render's environment settings. `PORT` comes from Render and is supported by the application. All normal profiles require PostgreSQL credentials and reject H2. Only isolated checks with the explicit `h2-test` profile can use H2; production rejects it regardless of additional profiles and enables Secure cookies. Use a separate database for local development.
 3. If the existing `squareone` schema has application tables but no `flyway_schema_history`, set `FLYWAY_BASELINE_ON_MIGRATE=true` **for the first upgraded startup only**, after the backup and rehearsal. Baseline version is deliberately `0`, so all three migrations run. Remove the flag after a successful deployment. Leave it unset for an empty database or one already managed by Flyway. Do not change the baseline version or enable Hibernate schema updates.
 4. Configure `/api/documents/health` as the Render health check. It returns `200 OK` only when the database responds and `503` on a connection failure. Retain the custom domain `docs.orbitbot.in`; Render handles its TLS certificate.
 
@@ -47,14 +47,13 @@ The current schema upgrade is additive but changes the document content mapping.
 Use the default profile for HTTP localhost:
 
 ```sh
-mkdir -p data
 ./gradlew bootRun
 ```
 
-Open `http://localhost:8080`. The ignored `.env` is read when present; without database settings the app uses `./data/squareone`. To explicitly use local H2 while ignoring `.env`:
+Open `http://localhost:8080`. The app requires Neon settings from the ignored `.env` or environment, just like the hosted instance. For an isolated H2 development check only, explicitly override the database settings:
 
 ```sh
-./gradlew bootRun --args='--spring.config.import= --spring.datasource.url=jdbc:h2:file:./data/squareone --spring.datasource.username=sa --spring.datasource.password= --DATABASE_SCHEMA=PUBLIC'
+./gradlew bootRun --args='--spring.profiles.active=h2-test --spring.datasource.url=jdbc:h2:file:./data/squareone --spring.datasource.username=sa --spring.datasource.password= --DATABASE_SCHEMA=PUBLIC'
 ```
 
 An existing pre-Flyway H2 file needs the same backup and one-time baseline procedure. Keep `SPRING_PROFILES_ACTIVE=production` and `SESSION_COOKIE_SECURE=true` out of HTTP localhost configuration. The hostname and cookie scopes keep localhost and the public domain separate.

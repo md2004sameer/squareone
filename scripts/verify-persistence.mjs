@@ -22,7 +22,7 @@ async function start() {
   processHandle = spawn('java', ['-jar', `build/libs/${jars[0]}`,
     '--spring.config.import=', '--debug=false', '--logging.level.root=WARN',
     `--server.port=${port}`, '--server.address=127.0.0.1',
-    `--spring.profiles.active=${process.env.SQUAREONE_TEST_PROFILE || ''}`,
+    `--spring.profiles.active=${process.env.SQUAREONE_TEST_PROFILE || (process.env.SQUAREONE_TEST_DATABASE_URL?.startsWith('jdbc:postgresql:') ? '' : 'h2-test')}`,
     `--server.servlet.session.cookie.secure=${process.env.SQUAREONE_TEST_PROFILE === 'production'}`,
     '--spring.sql.init.mode=never', '--spring.flyway.baseline-on-migrate=false',
     `--DATABASE_SCHEMA=${process.env.SQUAREONE_TEST_DATABASE_SCHEMA || 'PUBLIC'}`,

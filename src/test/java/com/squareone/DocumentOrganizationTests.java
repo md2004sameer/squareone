@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest(properties = {
+        "spring.profiles.active=h2-test",
         "spring.config.import=",
         "DATABASE_SCHEMA=PUBLIC",
         "spring.datasource.username=sa", "spring.datasource.password=",

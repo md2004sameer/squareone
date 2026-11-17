@@ -25,6 +25,7 @@ import com.squareone.repository.AppUserRepository;
 import com.squareone.repository.DocumentRepository;
 
 @SpringBootTest(properties = {
+        "spring.profiles.active=h2-test",
         "spring.config.import=",
         "DATABASE_SCHEMA=PUBLIC",
         "spring.datasource.username=sa", "spring.datasource.password=",

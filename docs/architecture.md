@@ -1,6 +1,6 @@
 # SquareOne — Architecture Diagram
 
-This diagram reflects the current `main` branch. It shows the browser UI, Spring Boot backend, persistence, export strategies, and sharing flow.
+This diagram reflects the Neon-backed application. It shows the browser UI, Spring Boot backend, persistence, export strategies, and sharing flow.
 
 ## System architecture
 
@@ -12,7 +12,7 @@ flowchart TB
         UI["index.html<br/>Editor UI"]
         CSS["stylesdocs.css<br/>Presentation"]
         JS["appdocs.js<br/>Editor logic + API calls"]
-        Cache[("Browser local document cache<br/>30-day expiry")]
+        Cache[("Browser recovery drafts + preferences<br/>30-day document expiry")]
         UI --- CSS
         UI --> JS
         JS <--> Cache
@@ -31,6 +31,17 @@ flowchart TB
         TXT["PlainTextDocumentExporter"]
         DOCX["WordDocumentExporter"]
 
+        Auth["AuthController<br/>signup + profile + password"]
+        Security["Spring Security<br/>login + BCrypt verification"]
+        Account["AccountService"]
+        Users["AppUserRepository"]
+        State["Workspace + preference APIs and repositories"]
+        Sessions["JDBC session repository"]
+        AppMain --> Security
+        Security --> Users
+        Security --> Sessions
+        Auth --> Account
+        Account --> Users
         AppMain --> Controller
         Controller --> DocService
         Controller --> ExportService
@@ -45,13 +56,17 @@ flowchart TB
         ShareService --> DocService
     end
 
-    DB[("H2 database<br/>./data/squareone")]
-    Volume[("Docker named volume<br/>squareone-data")]
+    DB[("Neon PostgreSQL<br/>squareone schema")]
 
     User --> UI
     JS <-->|HTTP/JSON| Controller
     Repo --> DB
-    DB --- Volume
+    Users --> DB
+    Sessions --> DB
+    State --> DB
+    JS <-->|HTTP/JSON| Auth
+    JS <-->|login| Security
+    JS <-->|workspace + settings| State
     ExportService -->|PDF / TXT / DOCX bytes| Controller
     ShareService -->|WhatsApp share URL| Controller
     Controller -->|share link opens| WhatsApp["WhatsApp web/app"]
@@ -61,8 +76,8 @@ flowchart TB
     classDef storage fill:#fff3dc,stroke:#b7791f,color:#55370c
     classDef external fill:#f4eaff,stroke:#8b5fbf,color:#38204f
     class UI,CSS,JS,Cache browser
-    class AppMain,Controller,DocService,ExportService,ShareService,Model,Repo,Exporter,PDF,TXT,DOCX backend
-    class DB,Volume storage
+    class AppMain,Controller,DocService,ExportService,ShareService,Model,Repo,Exporter,PDF,TXT,DOCX,Auth,Security,Account,Users,State,Sessions backend
+    class DB storage
     class WhatsApp external
 ```
 
@@ -77,7 +92,7 @@ sequenceDiagram
     participant API as DocumentController
     participant Service as DocumentService
     participant Repo as DocumentRepository
-    participant DB as H2 database
+    participant DB as Neon PostgreSQL
 
     User->>UI: Edit or manage document
     UI->>API: HTTP request /api/documents
@@ -124,12 +139,15 @@ flowchart LR
 | `DocumentExportService` | Selects an exporter based on the requested format |
 | `DocumentExporter` and implementations | Strategy pattern for PDF, plain text, and Word export |
 | `WhatsAppShareService` | Creates a WhatsApp URL containing the document text |
-| H2 | Primary persistent document store |
-| Browser local cache | Temporary per-browser recovery copy; H2 remains the primary store |
+| `AppUserRepository` and Spring Security | Retrieve account records and verify BCrypt password hashes from Neon |
+| Workspace and preference APIs | Persist account workspace and UI settings in Neon |
+| JDBC session repository | Persist account and guest sessions in Neon |
+| Neon PostgreSQL | Primary store for accounts, documents, metadata, history, workspaces, preferences and sessions |
+| Browser local cache | Recovery drafts and pending changes; Neon remains the persistent server store |
 
 ## Important deployment note
 
-The current application has no authentication or per-user document separation. Anyone who can reach the instance can access the shared document collection. The Docker Compose setup persists H2 data using the `squareone-data` named volume.
+Accounts and guest sessions have separate document/workspace ownership. Authentication loads the account and password hash from Neon; document, export and share APIs enforce ownership. Normal startup and Docker require the Neon database settings and do not create a local H2 database automatically. H2 is used only when explicitly configured for isolated checks. Deployment credentials stay in environment variables or the ignored `.env`, and HTTPS production uses Secure cookies.
 
 ## View the diagrams
 
