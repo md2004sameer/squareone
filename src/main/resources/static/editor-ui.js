@@ -507,7 +507,9 @@ function positionTableControls() {
     padding,
     Math.min(bounds.right - triggerBounds.width, window.innerWidth - triggerBounds.width - padding),
   );
-  const above = bounds.top - triggerBounds.height - 5;
+  // Mobile tables reserve a header so the menu doesn't cover the preceding text.
+  const headerPadding = Number.parseFloat(window.getComputedStyle(activeTable.wrapper).paddingTop) || 0;
+  const above = bounds.top + headerPadding - triggerBounds.height - 5;
   elements.tableControls.style.left = `${left}px`;
   elements.tableControls.style.top = `${above >= padding ? above : Math.min(bounds.top + 5, window.innerHeight - triggerBounds.height - padding)}px`;
 
@@ -850,6 +852,9 @@ elements.tableActionsMenu.addEventListener("keydown", (event) => {
 });
 for (const control of [elements.tableControls, elements.tableAddRow, elements.tableAddColumn]) {
   control.addEventListener("pointerleave", (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
     if (
       !elements.content.contains(event.relatedTarget)
       && !elements.tableControls.contains(event.relatedTarget)
@@ -950,6 +955,9 @@ elements.content.addEventListener("pointermove", (event) => {
   }
 });
 elements.content.addEventListener("pointerleave", (event) => {
+  if (event.pointerType === "touch") {
+    return;
+  }
   if (
     !elements.tableControls.contains(event.relatedTarget)
     && !elements.tableAddRow.contains(event.relatedTarget)

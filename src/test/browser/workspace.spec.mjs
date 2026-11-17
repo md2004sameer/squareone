@@ -213,6 +213,78 @@ test('workspace home and Trash work at mobile width', async ({ page }) => {
   await page.locator('#account-dialog-close').click();
 });
 
+test.describe('mobile editor controls', () => {
+  test.use({ isMobile: true, hasTouch: true });
+
+  test('touch dragging from the gutter still reorders blocks', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWorkspace(page);
+    await createDocument(page, 'Touch reorder', '<p>First block</p><p>Second block</p>');
+    await page.reload();
+    await page.locator('#home-recent button').click();
+    const paragraphs = page.locator('#editor .tiptap-content > p');
+    await paragraphs.first().tap();
+    const handle = await page.locator('#block-drag-button').boundingBox();
+    const target = await paragraphs.nth(1).boundingBox();
+    const touch = await page.context().newCDPSession(page);
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchStart', touchPoints: [{ x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }],
+    });
+    await touch.send('Input.dispatchTouchEvent', {
+      type: 'touchMove', touchPoints: [{ x: target.x + target.width / 2, y: target.y + target.height - 2 }],
+    });
+    await expect(page.locator('#block-drop-indicator')).toBeVisible();
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(paragraphs).toHaveText(['Second block', 'First block']);
+    await expect(page.locator('#block-drop-indicator')).toBeHidden();
+    await saved(page);
+  });
+
+  for (const width of [320, 390, 760]) {
+    test(`block and table controls leave text clear at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await openWorkspace(page);
+      const entry = await createDocument(page, 'Mobile controls',
+        '<p>Writing should stay clear of every control on my phone.</p>'
+        + '<p>This paragraph sits directly above a table.</p>'
+        + '<table><tbody><tr><td><p>First cell</p></td><td><p>Second cell</p></td></tr>'
+        + '<tr><td><p>Third cell</p></td><td><p>Fourth cell</p></td></tr></tbody></table>'
+        + '<p>More writing below the table.</p>');
+      await page.reload();
+      await page.locator('#home-recent button').click();
+      const editor = page.locator('#editor .tiptap-content');
+      const paragraph = editor.locator(':scope > p').first();
+      await paragraph.tap();
+      const blockControls = page.locator('#block-controls');
+      await expect(blockControls).toBeVisible();
+      const blockBounds = await blockControls.boundingBox();
+      const textBounds = await paragraph.boundingBox();
+      expect(blockBounds.x).toBeGreaterThanOrEqual(0);
+      expect(blockBounds.x + blockBounds.width).toBeLessThanOrEqual(textBounds.x - 4);
+
+      // The gutter button remains usable on touch screens.
+      await page.locator('#block-insert-button').tap();
+      await expect(page.locator('#slash-command-menu')).toBeVisible();
+      await editor.press('Escape');
+      await editor.locator('td p').first().tap();
+      const tableControls = page.locator('#table-controls');
+      await expect(tableControls).toBeVisible();
+      const menuBounds = await tableControls.boundingBox();
+      const previousBounds = await editor.locator(':scope > p').filter({ hasText: 'directly above' }).boundingBox();
+      const tableBounds = await editor.locator('table').boundingBox();
+      expect(menuBounds.y).toBeGreaterThanOrEqual(previousBounds.y + previousBounds.height + 4);
+      expect(menuBounds.y + menuBounds.height).toBeLessThanOrEqual(tableBounds.y);
+      expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(width);
+      await page.getByRole('button', { name: 'Table actions', exact: true }).tap();
+      await page.getByRole('menuitem', { name: 'Insert row below', exact: true }).tap();
+      await expect(editor.locator('tr')).toHaveCount(3);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await saved(page);
+      expect((await (await page.request.get(`/api/documents/${entry.id}`)).json()).content).toContain('First cell');
+    });
+  }
+});
+
 test('an older save response cannot overwrite edits typed while it was pending', async ({ page }) => {
   await openWorkspace(page);
   const entry = await createDocument(page, 'Initial note');

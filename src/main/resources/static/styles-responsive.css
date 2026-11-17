@@ -966,6 +966,19 @@
   .content-input {
     font-size: 15px;
     line-height: 1.7;
+    padding-left: 32px;
+  }
+
+  .block-controls {
+    flex-direction: column;
+  }
+
+  .tiptap-content .tableWrapper {
+    padding-top: 56px;
+  }
+
+  .table-edge-control {
+    display: none;
   }
 
   .editor-status {
