@@ -1,18 +1,19 @@
 import { createPreferencesController } from "./preferences-controller.js?v=25";
 import { createAccountController } from "./account-controller.js?v=26";
 import { createAccountUi } from "./account-ui.js?v=25";
-import { contentToPlainText, editorContentFromStored } from "./document-content.js?v=25";
+import { contentToPlainText, editorContentFromStored } from "./document-content.js?v=31";
 import { createDocumentController } from "./document-controller.js?v=30";
 import { createDocumentStorage } from "./document-storage.js?v=25";
-import { createDocumentUi } from "./document-ui.js?v=30";
-import { initializeEditorUi } from "./editor-ui.js?v=27";
+import { createDocumentUi } from "./document-ui.js?v=31";
+import { initializeEditorUi } from "./editor-ui.js?v=31";
 import { createSidebarController } from "./sidebar-controller.js?v=25";
 import { createThemeController } from "./theme-controller.js?v=25";
 import { createTrashController } from "./trash-controller.js?v=25";
 import { createWorkspaceHome } from "./workspace-home.js?v=27";
 import { createArchiveController } from "./archive-controller.js?v=25";
-import { createDocumentDetails } from "./document-details.js?v=25";
+import { createDocumentDetails } from "./document-details.js?v=31";
 import { createWorkspaceNavigation } from "./workspace-navigation.js?v=30";
+import { createEditorTitle } from "./editor-title.js?v=31";
 
 const elements = {
   list: document.querySelector("#document-list"),
@@ -147,6 +148,9 @@ const documentStorage = createDocumentStorage({
 const sidebarController = createSidebarController(elements, (patch) => preferencesController?.update(patch));
 const themeController = createThemeController(elements.accountTheme, (patch) => preferencesController?.update(patch));
 let documentController;
+const editorTitle = createEditorTitle(elements.title, {
+  getEditor: () => editorUi?.editor, shell: elements.appShell,
+});
 const documentUi = createDocumentUi({
   elements,
   getDocuments: () => documents,
@@ -159,6 +163,7 @@ const documentUi = createDocumentUi({
   onEditorStateChange: () => {
     applyFocusMode(preferencesController?.settings.focusMode || false);
     workspaceNavigation?.record();
+    editorTitle.scheduleResize();
   },
   onArchiveDocument: (id) => void documentController.archiveDocument(id),
   onReorderDocument: async (id, direction) => {
@@ -355,7 +360,9 @@ elements.accountProfile.addEventListener("click", () => {
   accountUi.closeMenu();
   accountUi.showDialog("profile");
 });
+let settingsEditorContext = null;
 elements.accountSettings.addEventListener("click", () => {
+  settingsEditorContext = activeDocumentId ? { documentId: activeDocumentId, selection: editorUi.editor.state.selection } : null;
   sidebarController.closeMobileSidebar(false);
   accountUi.closeMenu();
   accountUi.showDialog("settings");
@@ -381,6 +388,15 @@ elements.accountLogout.addEventListener("click", () => {
   });
 });
 elements.accountDialogClose.addEventListener("click", () => elements.accountDialog.close());
+elements.accountDialog.addEventListener("close", () => {
+  const context = settingsEditorContext;
+  settingsEditorContext = null;
+  if (context?.documentId !== activeDocumentId || !context) return;
+  editorUi.editor.chain().command(({ tr }) => {
+    tr.setSelection(context.selection);
+    return true;
+  }).focus(undefined, { scrollIntoView: false }).run();
+});
 elements.accountGuestContinue.addEventListener("click", () => elements.accountDialog.close());
 elements.accountModeToggle.addEventListener("click", () => {
   const name = elements.accountNameInput.value;
@@ -440,10 +456,11 @@ editorUi = initializeEditorUi({
   onContentChange: documentController.scheduleSave,
   onResize: sidebarController.refreshSidebarWidth,
   showToast,
+  getDocumentId: () => activeDocumentId,
 });
 
 document.addEventListener("keydown", (event) => {
-  if (document.querySelector("dialog[open]")) return;
+  if (event.defaultPrevented || document.querySelector("dialog[open]")) return;
   const modifier = event.metaKey || event.ctrlKey;
   const key = event.key.toLocaleLowerCase();
   if (event.key === "Escape" && elements.appShell.classList.contains("focus-mode")) {

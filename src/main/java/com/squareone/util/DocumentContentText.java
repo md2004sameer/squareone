@@ -14,7 +14,7 @@ import javax.swing.text.html.parser.ParserDelegator;
 public final class DocumentContentText {
 
     private static final Pattern RICH_TEXT_TAG = Pattern.compile(
-            "</?(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|hr|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\\b[^>]*>",
+            "</?(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|hr|details|summary|img|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\\b[^>]*>",
             Pattern.CASE_INSENSITIVE);
 
     private DocumentContentText() {
@@ -87,7 +87,12 @@ public final class DocumentContentText {
 
             @Override
             public void handleSimpleTag(HTML.Tag tag, MutableAttributeSet attributes, int position) {
-                if (tag == HTML.Tag.BR) {
+                if (tag == HTML.Tag.IMG) {
+                    if (!inTableCell[0] || cellHasBlockText[0]) appendLineBreak();
+                    text.append(imageDescription(attributes));
+                    if (inTableCell[0]) cellHasBlockText[0] = true;
+                    else appendLineBreak();
+                } else if (tag == HTML.Tag.BR || isCollapsibleTag(tag)) {
                     appendLineBreak();
                 } else if (tag == HTML.Tag.HR) {
                     appendLineBreak();
@@ -143,6 +148,17 @@ public final class DocumentContentText {
             throw new IllegalArgumentException("Unable to read rich document content", exception);
         }
         return parser.finish();
+    }
+
+    private static boolean isCollapsibleTag(HTML.Tag tag) {
+        return "details".equalsIgnoreCase(tag.toString()) || "summary".equalsIgnoreCase(tag.toString());
+    }
+
+    private static String imageDescription(MutableAttributeSet attributes) {
+        Object alt = attributes.getAttribute(HTML.Attribute.ALT);
+        Object source = attributes.getAttribute(HTML.Attribute.SRC);
+        String label = alt == null || alt.toString().isBlank() ? "Image" : alt.toString().strip();
+        return label + (source == null || source.toString().isBlank() ? "" : " (" + source + ")");
     }
 
     public sealed interface Block permits TextBlock, TableBlock {
@@ -230,7 +246,12 @@ public final class DocumentContentText {
 
         @Override
         public void handleSimpleTag(HTML.Tag tag, MutableAttributeSet attributes, int position) {
-            if (tag == HTML.Tag.BR) {
+            if (tag == HTML.Tag.IMG) {
+                StringBuilder target = cellText == null ? text : cellText;
+                appendLineBreak(target);
+                target.append(imageDescription(attributes));
+                if (cellText == null) appendLineBreak(target);
+            } else if (tag == HTML.Tag.BR || isCollapsibleTag(tag)) {
                 appendLineBreak(cellText == null ? text : cellText);
             } else if (tag == HTML.Tag.HR && tableRows == null) {
                 appendLineBreak(text);

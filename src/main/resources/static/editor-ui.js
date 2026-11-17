@@ -1,5 +1,8 @@
-import { Editor } from "./vendor/editor.js?v=25";
-import { createEditorExtensions, slashCommands } from "./editor-extensions.js?v=25";
+import { Editor, closeHistory } from "./vendor/editor.js?v=31";
+import { createEditorExtensions } from "./editor-extensions.js?v=31";
+import { slashCommands, commandIcon } from "./editor-commands.js?v=31";
+import { createEditorInsertions } from "./editor-insertions.js?v=31";
+import { positionPopup, visualBounds, workspaceBounds, observeEditorLayout } from "./editor-positioning.js?v=31";
 
 let elements;
 let textEditor;
@@ -15,8 +18,9 @@ let slashQuery = null;
 let currentBlock = null;
 let activeBlockDrag = null;
 let blockDropPosition = null;
-let touchBlockDrag = null;
+let pointerBlockDrag = null;
 let activeTable = null;
+let insertions = null;
 
 function updateWordCount() {
   const characters = textEditor?.getText({ blockSeparator: "\n" }) || "";
@@ -82,8 +86,11 @@ function hideFormattingToolbar() {
 
 function renderSlashOptions(query) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  slashMatches = slashCommands.filter((command) =>
-    fuzzyMatches(`${command.title} ${command.keywords}`.toLocaleLowerCase(), normalizedQuery),
+  const directMatches = slashCommands.filter((command) =>
+    `${command.title} ${command.keywords}`.toLocaleLowerCase().includes(normalizedQuery),
+  );
+  slashMatches = directMatches.length ? directMatches : slashCommands.filter((command) =>
+    [command.title, ...command.keywords.split(" ")].some((alias) => fuzzyMatches(alias.toLocaleLowerCase(), normalizedQuery)),
   );
   slashActiveIndex = Math.min(slashActiveIndex, slashMatches.length - 1);
   elements.slashOptions.replaceChildren();
@@ -97,29 +104,28 @@ function renderSlashOptions(query) {
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", String(index === slashActiveIndex));
     option.dataset.commandIndex = String(index);
+    option.tabIndex = -1;
+    option.classList.toggle("command-group-start", Boolean(command.separator && !normalizedQuery));
 
     const icon = document.createElement("span");
     icon.className = "slash-command-icon";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = command.icon;
+    icon.innerHTML = commandIcon(command.icon);
 
     const copy = document.createElement("span");
     copy.className = "slash-command-copy";
     const title = document.createElement("span");
     title.className = "slash-command-title";
     title.textContent = command.title;
-    const description = document.createElement("span");
-    description.className = "slash-command-description";
-    description.textContent = command.description;
-    copy.append(title, description);
+    copy.append(title);
     option.append(icon, copy);
     elements.slashOptions.append(option);
   });
 
   if (slashMatches.length > 0) {
-    elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
+    textEditor.view.dom.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
   } else {
-    elements.content.removeAttribute("aria-activedescendant");
+    textEditor.view.dom.removeAttribute("aria-activedescendant");
   }
 }
 
@@ -127,16 +133,10 @@ function positionSlashMenu() {
   if (!slashRange || !textEditor) {
     return;
   }
-  const caret = textEditor.view.coordsAtPos(textEditor.state.selection.from);
-  const bounds = elements.slashMenu.getBoundingClientRect();
-  const padding = 12;
-  const left = Math.max(padding, Math.min(caret.left, window.innerWidth - bounds.width - padding));
-  const below = caret.bottom + 8;
-  const top = below + bounds.height <= window.innerHeight - padding
-    ? below
-    : Math.max(padding, caret.top - bounds.height - 8);
-  elements.slashMenu.style.left = `${left}px`;
-  elements.slashMenu.style.top = `${top}px`;
+  const bounds = workspaceBounds(elements.workspace);
+  const dock = document.querySelector("#editor-dock");
+  if (!dock.hidden) bounds.bottom = Math.min(bounds.bottom, dock.getBoundingClientRect().top - 8);
+  positionPopup(elements.slashMenu, textEditor.view.coordsAtPos(slashRange.from), { bounds });
 }
 
 function closeSlashMenu() {
@@ -144,12 +144,14 @@ function closeSlashMenu() {
   slashMatches = [];
   slashQuery = null;
   elements.slashMenu.hidden = true;
-  elements.content.setAttribute("aria-expanded", "false");
-  elements.content.removeAttribute("aria-activedescendant");
+  textEditor?.view.dom.setAttribute("aria-expanded", "false");
+  textEditor?.view.dom.removeAttribute("aria-activedescendant");
 }
 
 function syncSlashMenu() {
-  if (!textEditor || !textEditor.isFocused || !textEditor.state.selection.empty) {
+  if (!textEditor || !textEditor.isFocused || !textEditor.state.selection.empty || textEditor.view.composing
+      || textEditor.isActive("codeBlock") || textEditor.isActive("code") || textEditor.isActive("link")
+      || !["paragraph", "heading"].includes(textEditor.state.selection.$from.parent.type.name)) {
     closeSlashMenu();
     return;
   }
@@ -170,7 +172,7 @@ function syncSlashMenu() {
     slashQuery = trigger[2];
   }
   elements.slashMenu.hidden = false;
-  elements.content.setAttribute("aria-expanded", "true");
+  textEditor.view.dom.setAttribute("aria-expanded", "true");
   renderSlashOptions(trigger[2]);
   positionSlashMenu();
 }
@@ -191,11 +193,7 @@ function getBlockFromTarget(target) {
   if (!(target instanceof Element) || !elements.content.contains(target)) {
     return null;
   }
-  let blockElement = target;
-  while (blockElement.parentElement && blockElement.parentElement !== elements.content) {
-    blockElement = blockElement.parentElement;
-  }
-  return getTopLevelBlocks().find((block) => block.dom === blockElement) || null;
+  return getTopLevelBlocks().find((block) => block.dom instanceof Element && block.dom.contains(target)) || null;
 }
 
 function getBlockAtSelection() {
@@ -212,6 +210,8 @@ function blockLabel(node) {
     horizontalRule: "divider",
     orderedList: "numbered list",
     paragraph: "paragraph",
+    details: "dropdown",
+    image: "image",
     taskList: "to-do list",
   };
   if (node.type.name === "heading") {
@@ -279,7 +279,8 @@ function reorderBlock(from, targetPosition, direction = null) {
   const transaction = state.tr
     .delete(from, end)
     .insert(insertionPosition, node);
-  textEditor.view.dispatch(transaction.scrollIntoView());
+  textEditor.view.dispatch(closeHistory(transaction).scrollIntoView());
+  textEditor.view.dispatch(closeHistory(textEditor.state.tr));
 
   const movedBlock = getBlockAtPosition(insertionPosition);
   if (movedBlock) {
@@ -377,16 +378,12 @@ function updateBlockDropTarget(clientX, clientY) {
   elements.blockDropIndicator.hidden = false;
 }
 
-function beginBlockDrag(block, dataTransfer) {
+function beginBlockDrag(block) {
   if (!block) {
     return;
   }
   activeBlockDrag = { from: block.pos, nodeSize: block.node.nodeSize };
   elements.blockControls.classList.add("is-dragging");
-  if (dataTransfer) {
-    dataTransfer.effectAllowed = "move";
-    dataTransfer.setData("text/plain", blockLabel(block.node));
-  }
 }
 
 function finishBlockDrag(shouldMove) {
@@ -405,18 +402,18 @@ function finishBlockDrag(shouldMove) {
   }
 }
 
-function startTouchBlockDrag(event) {
-  if (!touchBlockDrag || activeBlockDrag) {
+function startPointerBlockDrag(event) {
+  if (!pointerBlockDrag || activeBlockDrag) {
     return;
   }
   const distance = Math.hypot(
-    event.clientX - touchBlockDrag.startX,
-    event.clientY - touchBlockDrag.startY,
+    event.clientX - pointerBlockDrag.startX,
+    event.clientY - pointerBlockDrag.startY,
   );
   if (distance < 7) {
     return;
   }
-  beginBlockDrag(touchBlockDrag.block);
+  beginBlockDrag(pointerBlockDrag.block);
 }
 
 function getTableContextAtPosition(position) {
@@ -446,7 +443,7 @@ function getTableContextFromTarget(target) {
   if (!(target instanceof Element)) {
     return null;
   }
-  const table = target.closest("table");
+  const table = target.closest("table") || target.closest(".tableWrapper")?.querySelector("table");
   if (!table) {
     return null;
   }
@@ -616,7 +613,7 @@ function moveSlashSelection(offset) {
   elements.slashOptions.querySelectorAll(".slash-command-option").forEach((option, index) => {
     option.setAttribute("aria-selected", String(index === slashActiveIndex));
   });
-  elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
+  textEditor.view.dom.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
   elements.slashOptions.children[slashActiveIndex].scrollIntoView({ block: "nearest" });
 }
 
@@ -627,8 +624,7 @@ function runSlashCommand(index) {
   }
   const range = slashRange;
   closeSlashMenu();
-  const chain = textEditor.chain().focus().deleteRange(range);
-  if (!command.command(chain).run()) {
+  if (!insertions.run(command.id, { slashRange: range })) {
     showToast(`Couldn't insert ${command.title.toLocaleLowerCase()} here.`);
   }
 }
@@ -641,19 +637,18 @@ function positionFormattingToolbar() {
   const { from, to } = textEditor.state.selection;
   const start = textEditor.view.coordsAtPos(from);
   const end = textEditor.view.coordsAtPos(to);
+  const viewport = visualBounds();
+  elements.toolbar.style.maxWidth = `${viewport.width - 24}px`;
   const toolbarBounds = elements.toolbar.getBoundingClientRect();
-  const padding = 12;
-  const left = Math.min(
-    Math.max((start.left + end.right) / 2 - toolbarBounds.width / 2, padding),
-    window.innerWidth - toolbarBounds.width - padding,
-  );
-  const top = Math.min(start.top, end.top) - toolbarBounds.height - 10;
-  elements.toolbar.style.left = `${left}px`;
-  elements.toolbar.style.top = `${top >= padding ? top : Math.max(start.bottom, end.bottom) + 10}px`;
+  positionPopup(elements.toolbar, {
+    left: (start.left + end.right) / 2 - toolbarBounds.width / 2,
+    top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom),
+  }, { above: true });
 }
 
 function updateFormattingToolbar() {
-  if (!textEditor || textEditor.state.selection.empty || !textEditor.isFocused) {
+  if (!textEditor || textEditor.state.selection.empty
+      || (!textEditor.isFocused && !elements.toolbar.contains(document.activeElement))) {
     hideFormattingToolbar();
     return;
   }
@@ -662,7 +657,8 @@ function updateFormattingToolbar() {
   elements.toolbar.hidden = false;
   elements.toolbar.setAttribute("aria-hidden", "false");
   positionFormattingToolbar();
-  window.requestAnimationFrame(() => elements.toolbar.classList.add("visible"));
+  window.cancelAnimationFrame(toolbarPositionFrame);
+  toolbarPositionFrame = window.requestAnimationFrame(() => elements.toolbar.classList.add("visible"));
   elements.toolbar.querySelectorAll("[data-format]").forEach((button) => {
     const format = button.dataset.format;
     const active = format === "link"
@@ -885,14 +881,6 @@ elements.blockControls.addEventListener("mousedown", (event) => {
   }
 });
 elements.blockInsertButton.addEventListener("click", addBlockAfterCurrent);
-elements.blockDragButton.addEventListener("dragstart", (event) => {
-  if (!currentBlock) {
-    event.preventDefault();
-    return;
-  }
-  beginBlockDrag(currentBlock, event.dataTransfer);
-});
-elements.blockDragButton.addEventListener("dragend", () => finishBlockDrag(false));
 elements.blockDragButton.addEventListener("keydown", (event) => {
   if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) {
     return;
@@ -901,11 +889,11 @@ elements.blockDragButton.addEventListener("keydown", (event) => {
   moveBlockByDirection(currentBlock, event.key === "ArrowUp" ? -1 : 1);
 });
 elements.blockDragButton.addEventListener("pointerdown", (event) => {
-  if (event.pointerType === "mouse" || !currentBlock) {
+  if (!event.isPrimary || event.button !== 0 || !currentBlock) {
     return;
   }
   event.preventDefault();
-  touchBlockDrag = {
+  pointerBlockDrag = {
     block: currentBlock,
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -914,25 +902,25 @@ elements.blockDragButton.addEventListener("pointerdown", (event) => {
   elements.blockDragButton.setPointerCapture(event.pointerId);
 });
 elements.blockDragButton.addEventListener("pointermove", (event) => {
-  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
+  if (!pointerBlockDrag || event.pointerId !== pointerBlockDrag.pointerId) {
     return;
   }
   event.preventDefault();
-  startTouchBlockDrag(event);
+  startPointerBlockDrag(event);
   updateBlockDropTarget(event.clientX, event.clientY);
 });
 elements.blockDragButton.addEventListener("pointerup", (event) => {
-  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
+  if (!pointerBlockDrag || event.pointerId !== pointerBlockDrag.pointerId) {
     return;
   }
   updateBlockDropTarget(event.clientX, event.clientY);
   finishBlockDrag(Boolean(activeBlockDrag));
-  touchBlockDrag = null;
+  pointerBlockDrag = null;
 });
 elements.blockDragButton.addEventListener("pointercancel", () => {
-  if (touchBlockDrag) {
+  if (pointerBlockDrag) {
     finishBlockDrag(false);
-    touchBlockDrag = null;
+    pointerBlockDrag = null;
   }
 });
 elements.blockControls.addEventListener("pointerleave", (event) => {
@@ -947,7 +935,7 @@ elements.content.addEventListener("pointermove", (event) => {
   } else if (!elements.tableActionsMenu.contains(document.activeElement)) {
     hideTableControls();
   }
-  if (!activeBlockDrag && !touchBlockDrag) {
+  if (!activeBlockDrag && !pointerBlockDrag) {
     const block = getBlockFromTarget(event.target);
     if (block) {
       showBlockControls(block);
@@ -973,27 +961,16 @@ elements.content.addEventListener("pointerleave", (event) => {
     hideBlockControls();
   }
 });
-elements.editorWrap.addEventListener("dragover", (event) => {
-  if (!activeBlockDrag) {
-    return;
-  }
-  event.preventDefault();
-  updateBlockDropTarget(event.clientX, event.clientY);
-});
-elements.editorWrap.addEventListener("drop", (event) => {
-  if (!activeBlockDrag) {
-    return;
-  }
-  event.preventDefault();
-  finishBlockDrag(true);
-});
 textEditor = new Editor({
   element: elements.content,
   extensions: createEditorExtensions(),
   editorProps: {
+    scrollThreshold: { top: 70, bottom: 110, left: 12, right: 12 },
+    scrollMargin: { top: 80, bottom: 130, left: 12, right: 12 },
     attributes: {
       class: "tiptap-content",
       role: "textbox",
+      "aria-label": "Document body",
       "aria-multiline": "true",
       "aria-describedby": "block-move-help",
       "aria-keyshortcuts": "Alt+ArrowUp Alt+ArrowDown Alt+Enter",
@@ -1001,6 +978,7 @@ textEditor = new Editor({
       spellcheck: "true",
     },
     handleKeyDown(_view, event) {
+      if (event.isComposing || event.keyCode === 229 || _view.composing) return false;
       if (slashRange) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
@@ -1056,6 +1034,7 @@ textEditor = new Editor({
     updateFormattingToolbar();
     onContentChange();
     syncSlashMenu();
+    insertions?.layout();
     if (textEditor.isFocused) {
       showBlockControls(getBlockAtSelection());
       showTableControls(getTableContextFromSelection());
@@ -1064,6 +1043,7 @@ textEditor = new Editor({
   onSelectionUpdate() {
     updateFormattingToolbar();
     syncSlashMenu();
+    insertions?.layout();
     if (textEditor.isFocused) {
       showBlockControls(getBlockAtSelection());
       showTableControls(getTableContextFromSelection());
@@ -1097,18 +1077,19 @@ textEditor = new Editor({
   },
 });
 bindFormattingToolbar();
-window.addEventListener("resize", () => {
-  onResize();
-  if (!elements.toolbar.hidden) {
-    positionFormattingToolbar();
-  }
-  if (!elements.slashMenu.hidden) {
-    positionSlashMenu();
-  }
-  positionBlockControls();
-  positionTableControls();
+insertions = createEditorInsertions({
+  elements, editor: textEditor, getDocumentId: options.getDocumentId, showToast,
+  closeEditorMenus: () => { closeSlashMenu(); hideFormattingToolbar(); },
 });
-window.addEventListener("scroll", () => {
+elements.content.addEventListener("compositionstart", closeSlashMenu);
+elements.content.addEventListener("compositionend", () => window.requestAnimationFrame(syncSlashMenu));
+textEditor.view.dom.setAttribute("aria-controls", "slash-command-menu");
+window.addEventListener("resize", onResize);
+observeEditorLayout(elements, () => {
+  const obscured = Boolean(document.querySelector("dialog[open]")) || elements.appShell.classList.contains("mobile-sidebar-open");
+  if (obscured) {
+    hideFormattingToolbar(); closeSlashMenu(); hideBlockControls(); hideTableControls();
+  }
   if (!elements.toolbar.hidden) {
     positionFormattingToolbar();
   }
@@ -1117,7 +1098,8 @@ window.addEventListener("scroll", () => {
   }
   positionBlockControls();
   positionTableControls();
-}, true);
+  insertions.layout();
+});
 
   return {
     editor: textEditor,
@@ -1125,5 +1107,6 @@ window.addEventListener("scroll", () => {
     hideFormattingToolbar,
     hideTableControls,
     updateWordCount,
+    syncDocument: insertions.syncDocument,
   };
 }

@@ -22,7 +22,7 @@
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #55574f;
+  color: var(--editor-body);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -34,13 +34,13 @@
 .toolbar-button:focus-visible,
 .toolbar-button[aria-pressed="true"] {
   outline: none;
-  background: #f0f1ed;
-  color: #252722;
+  background: var(--floating-hover);
+  color: var(--ink);
 }
 
 .toolbar-heading {
   width: 31px;
-  color: #74776f;
+  color: var(--muted);
   font-size: 10px;
 }
 
@@ -87,7 +87,7 @@
   width: 1px;
   height: 20px;
   margin: 0 2px;
-  background: #e8e9e4;
+  background: var(--floating-border);
 }
 
 .toolbar-palette {
@@ -98,9 +98,9 @@
   align-items: center;
   gap: 5px;
   padding: 7px;
-  border: 1px solid #e6e7e1;
+  border: 1px solid var(--floating-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--toolbar-bg);
   box-shadow: 0 8px 24px #2527221c;
 }
 
@@ -125,8 +125,8 @@
   padding: 0 7px;
   border: 0;
   border-radius: 5px;
-  background: #f1f2ee;
-  color: #5e6259;
+  background: var(--block-surface);
+  color: var(--editor-body);
   cursor: pointer;
   font-size: 10px;
 }
@@ -134,7 +134,7 @@
 .palette-clear:hover,
 .palette-clear:focus-visible {
   outline: none;
-  background: #e6e9e1;
+  background: var(--floating-hover);
 }
 
 .toolbar-link-editor {
@@ -145,9 +145,9 @@
   align-items: center;
   gap: 5px;
   padding: 6px;
-  border: 1px solid #e6e7e1;
+  border: 1px solid var(--floating-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--toolbar-bg);
   box-shadow: 0 8px 24px #2527221c;
 }
 
@@ -155,17 +155,17 @@
   width: 220px;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid #e1e3dc;
+  border: 1px solid var(--floating-border);
   border-radius: 5px;
   outline: none;
-  background: #fff;
-  color: #30332d;
+  background: var(--toolbar-bg);
+  color: var(--ink);
   font: inherit;
   font-size: 10px;
 }
 
 .toolbar-link-editor input:focus {
-  border-color: #9eac93;
+  border-color: var(--accent);
 }
 
 .toolbar-link-editor button {
@@ -173,8 +173,8 @@
   padding: 0 8px;
   border: 0;
   border-radius: 5px;
-  background: #f1f2ee;
-  color: #55584f;
+  background: var(--block-surface);
+  color: var(--editor-body);
   cursor: pointer;
   font: inherit;
   font-size: 10px;
@@ -182,7 +182,7 @@
 
 .toolbar-link-editor button[type="submit"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--paper);
 }
 
 .toolbar-link-editor button:hover {

@@ -1,5 +1,5 @@
-import { Editor } from './vendor/editor.js?v=25';
-import { createEditorExtensions } from './editor-extensions.js?v=25';
+import { Editor } from './vendor/editor.js?v=31';
+import { createEditorExtensions } from './editor-extensions.js?v=31';
 
 export function createDocumentDetails({ request, getActiveDocument, syncPendingChanges, onUpdate, showToast }) {
   const history = document.querySelector('#history-dialog');

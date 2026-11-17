@@ -16,7 +16,7 @@ document.querySelector("#workspace-retry").addEventListener("click", () => windo
 const startupTimer = window.setTimeout(() => {
   if (!loading.hidden) showStartupError();
 }, 30000);
-import("./appdocs.js?v=30")
+import("./appdocs.js?v=31")
   .catch((cause) => {
     console.error("Unable to start the workspace:", cause);
     showStartupError();

@@ -7,3 +7,6 @@ export { Highlight } from "@tiptap/extension-highlight";
 export { Placeholder } from "@tiptap/extensions";
 export { TaskList, TaskItem } from "@tiptap/extension-list";
 export { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
+export { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
+export { Image } from "@tiptap/extension-image";
+export { closeHistory } from "@tiptap/pm/history";

@@ -12,7 +12,7 @@ export function editorContentFromStored(content) {
   if (!content) {
     return "";
   }
-  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
+  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|hr|details|summary|img|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
     return content;
   }
   return content.split(/\n{2,}/u)
@@ -26,7 +26,7 @@ export function contentToPlainText(content) {
   }
 
   const parsed = new DOMParser().parseFromString(content, "text/html");
-  const blockTags = new Set(["BLOCKQUOTE", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "TR", "UL"]);
+  const blockTags = new Set(["BLOCKQUOTE", "DETAILS", "SUMMARY", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "TR", "UL"]);
   let text = "";
   let tableCellDepth = 0;
   let cellHasBlockText = false;
@@ -47,6 +47,15 @@ export function contentToPlainText(content) {
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) {
+      return;
+    }
+    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "IMG") {
+      if (!tableCellDepth || cellHasBlockText) appendLineBreak();
+      const alt = node.getAttribute("alt")?.trim() || "Image";
+      const source = node.getAttribute("src") || "";
+      text += `${alt}${source ? ` (${source})` : ""}`;
+      if (tableCellDepth) cellHasBlockText = true;
+      else appendLineBreak();
       return;
     }
     if (

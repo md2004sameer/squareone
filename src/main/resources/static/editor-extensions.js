@@ -1,7 +1,8 @@
 import {
   mergeAttributes, Node, StarterKit, Underline, Link, TextStyle, Color,
   Highlight, Placeholder, TaskList, TaskItem, Table, TableRow, TableCell, TableHeader,
-} from "./vendor/editor.js?v=25";
+  Details, DetailsSummary, DetailsContent, Image,
+} from "./vendor/editor.js?v=31";
 
 const Callout = Node.create({
   name: "callout",
@@ -16,85 +17,49 @@ const Callout = Node.create({
   },
 });
 
-export const slashCommands = [
-  {
-    title: "Heading 1",
-    icon: "H1",
-    description: "Large section heading",
-    keywords: "heading title h1",
-    command: (chain) => chain.setNode("heading", { level: 1 }),
+
+const BodyImage = Image.extend({
+  renderText({ node }) {
+    return node.attrs.alt || "Image";
   },
-  {
-    title: "Heading 2",
-    icon: "H2",
-    description: "Medium section heading",
-    keywords: "heading h2",
-    command: (chain) => chain.setNode("heading", { level: 2 }),
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement("figure");
+      dom.className = "editor-image";
+      dom.contentEditable = "false";
+      const image = document.createElement("img");
+      image.loading = "lazy";
+      image.decoding = "async";
+      image.referrerPolicy = "no-referrer";
+      const failure = document.createElement("figcaption");
+      failure.setAttribute("role", "status");
+      failure.hidden = true;
+      dom.append(image, failure);
+      let source = null;
+      const update = (current) => {
+        image.alt = current.attrs.alt || "";
+        image.title = current.attrs.title || "";
+        failure.textContent = `Image couldn't load${current.attrs.alt ? `: ${current.attrs.alt}` : ". Check its HTTPS URL."}`;
+        if (source !== current.attrs.src) {
+          source = current.attrs.src;
+          image.hidden = false;
+          failure.hidden = true;
+          image.src = source;
+        }
+      };
+      image.addEventListener("error", () => { image.hidden = true; failure.hidden = false; dom.classList.add("image-failed"); });
+      image.addEventListener("load", () => { image.hidden = false; failure.hidden = true; dom.classList.remove("image-failed"); });
+      update(node);
+      return {
+        dom,
+        update(current) { if (current.type.name !== "image") return false; update(current); return true; },
+        ignoreMutation: (mutation) => mutation.type !== "selection",
+        selectNode: () => dom.classList.add("ProseMirror-selectednode"),
+        deselectNode: () => dom.classList.remove("ProseMirror-selectednode"),
+      };
+    };
   },
-  {
-    title: "Heading 3",
-    icon: "H3",
-    description: "Small section heading",
-    keywords: "heading h3",
-    command: (chain) => chain.setNode("heading", { level: 3 }),
-  },
-  {
-    title: "Bullet List",
-    icon: "•",
-    description: "Create a simple list",
-    keywords: "bullet bulleted list unordered",
-    command: (chain) => chain.toggleBulletList(),
-  },
-  {
-    title: "Numbered List",
-    icon: "1.",
-    description: "Create a numbered list",
-    keywords: "numbered ordered list",
-    command: (chain) => chain.toggleOrderedList(),
-  },
-  {
-    title: "To-do List",
-    icon: "☐",
-    description: "Track tasks with a checklist",
-    keywords: "todo to-do task checklist",
-    command: (chain) => chain.toggleTaskList(),
-  },
-  {
-    title: "Quote",
-    icon: "“",
-    description: "Capture a quotation",
-    keywords: "quote blockquote",
-    command: (chain) => chain.toggleBlockquote(),
-  },
-  {
-    title: "Code Block",
-    icon: "</>",
-    description: "Display code with formatting",
-    keywords: "code pre",
-    command: (chain) => chain.toggleCodeBlock(),
-  },
-  {
-    title: "Divider",
-    icon: "—",
-    description: "Separate sections with a line",
-    keywords: "divider horizontal rule",
-    command: (chain) => chain.setHorizontalRule(),
-  },
-  {
-    title: "Callout",
-    icon: "✳",
-    description: "Highlight an important note",
-    keywords: "callout note",
-    command: (chain) => chain.wrapIn("callout"),
-  },
-  {
-    title: "Table",
-    icon: "▦",
-    description: "Insert a 3 × 3 table",
-    keywords: "table grid rows columns spreadsheet",
-    command: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: false }),
-  },
-];
+});
 
 export function createEditorExtensions() {
   return [
@@ -111,6 +76,18 @@ export function createEditorExtensions() {
     TaskList,
     TaskItem.configure({ nested: true }),
     Callout,
+    Details.configure({
+      persist: true,
+      renderToggleButton: ({ element, isOpen }) => {
+        element.contentEditable = "false";
+        element.setAttribute("aria-label", isOpen ? "Collapse dropdown" : "Expand dropdown");
+        element.setAttribute("aria-expanded", String(isOpen));
+        element.textContent = "";
+      },
+    }),
+    DetailsSummary.configure({ HTMLAttributes: { "aria-label": "Dropdown summary" } }),
+    DetailsContent,
+    BodyImage,
     Table.configure({
       resizable: true,
       cellMinWidth: 96,

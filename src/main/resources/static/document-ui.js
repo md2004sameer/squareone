@@ -658,6 +658,7 @@ export function createDocumentUi({
     );
     const editorUi = getEditorUi();
     const hasDocument = Boolean(activeDocument);
+    editorUi.syncDocument();
     onEditorStateChange();
     elements.workspaceLoading.hidden = true;
     document.querySelectorAll("[data-workspace-control]").forEach((control) => { control.disabled = false; });

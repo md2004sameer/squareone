@@ -91,8 +91,17 @@ try {
   assert.equal(identity.authenticated, true);
   assert.equal((await account.request(`/api/documents/${note.id}`)).ownerId, identity.userId);
   await guest.request(`/api/documents/${note.id}`, { status: 404 });
-  const contentJson = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rich Ω हिन्दी' }] }] };
-  const saved = await account.request(`/api/documents/${note.id}`, { method: 'PUT', body: { title: 'Saved note', content: '<p>Rich Ω हिन्दी</p>', contentJson, revision: 1 } });
+  const content = '<p>Rich Ω हिन्दी</p><details><summary>Project notes</summary><div data-type="detailsContent"><p>Nested content</p></div></details><p>November 18, 2026</p><img src="https://images.example.test/diagram.png" alt="Architecture sketch">';
+  const textNode = text => ({ type: 'text', text });
+  const paragraph = text => ({ type: 'paragraph', content: [textNode(text)] });
+  const contentJson = { type: 'doc', content: [paragraph('Rich Ω हिन्दी'),
+    { type: 'details', attrs: { open: false }, content: [
+      { type: 'detailsSummary', content: [textNode('Project notes')] },
+      { type: 'detailsContent', content: [paragraph('Nested content')] },
+    ] }, paragraph('November 18, 2026'),
+    { type: 'image', attrs: { src: 'https://images.example.test/diagram.png', alt: 'Architecture sketch', title: null } },
+  ] };
+  const saved = await account.request(`/api/documents/${note.id}`, { method: 'PUT', body: { title: 'Saved note', content, contentJson, revision: 1 } });
   assert.equal(saved.revision, 2);
   assert.deepEqual(saved.contentJson, contentJson);
   await account.request(`/api/documents/${note.id}`, { method: 'PUT', status: 409, body: { title: 'Stale', content: 'Do not overwrite', revision: 1 } });
@@ -117,7 +126,7 @@ try {
   const appearance = await account.request(`/api/documents/${note.id}/appearance`, { method: 'PUT', body: { icon: '✳', coverRef: '/cover.png', rowVersion: active.rowVersion } });
   await account.request(`/api/documents/${note.id}/appearance`, { method: 'PUT', status: 409, body: { icon: 'Stale', rowVersion: active.rowVersion } });
   const expectedNote = await account.request(`/api/documents/${note.id}`, { method: 'PUT', body: {
-    title: 'Saved across deployment', content: '<p>Rich Ω हिन्दी</p>', contentJson, revision: appearance.revision,
+    title: 'Saved across deployment', content, contentJson, revision: appearance.revision,
   } });
   const unsecured = await fetch(`${base}/api/documents`, { method: 'POST' });
   assert.equal(unsecured.status, 403, 'CSRF must remain required');
@@ -132,6 +141,10 @@ try {
   const persistedNote = await account.request(`/api/documents/${note.id}`);
   for (const key of ['id', 'title', 'content', 'contentJson', 'revision', 'icon', 'coverRef', 'ownerId', 'workspaceId']) {
     assert.deepEqual(persistedNote[key], expectedNote[key], `${key} must survive server restart`);
+  }
+  const exported = await account.request(`/api/documents/${note.id}/export/txt`);
+  for (const fallback of ['Project notes', 'Nested content', 'November 18, 2026', 'Architecture sketch (https://images.example.test/diagram.png)']) {
+    assert(exported.includes(fallback), `${fallback} must remain readable after restart`);
   }
   const persistedPreferences = await account.request('/api/preferences');
   for (const [key, value] of Object.entries(prefs)) assert.deepEqual(persistedPreferences[key], value);

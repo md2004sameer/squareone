@@ -4,7 +4,7 @@
   flex: 1;
   align-items: stretch;
   justify-content: center;
-  padding: 0 40px 36px;
+  padding: 0 clamp(32px, 4vw, 56px) 32px;
 }
 
 .workspace-loading,
@@ -208,13 +208,13 @@ kbd {
 .editor {
   position: relative;
   display: flex;
-  width: min(100%, 720px);
-  max-width: 720px;
+  width: 100%;
+  max-width: 880px;
   min-height: max(560px, calc(100vh - 130px));
-  flex: 1;
+  flex: 0 1 880px;
   flex-direction: column;
   align-self: stretch;
-  padding: 48px 20px 24px;
+  padding: 76px 36px calc(144px + var(--editor-keyboard-gap, 0px));
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -239,20 +239,26 @@ kbd {
 .title-input {
   display: block;
   width: 100%;
+  min-height: 1.25em;
+  margin: 0 0 20px;
   padding: 0;
+  overflow: hidden;
+  resize: none;
   border: 0;
   outline: 0;
   background: transparent;
-  color: #30332d;
+  color: var(--ink);
   font-family: var(--serif);
-  font-size: 36px;
-  font-weight: 500;
+  font-size: 40px;
+  font-weight: 400;
   letter-spacing: -0.7px;
-  line-height: 1.2;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
-.title-input::placeholder {
-  color: #d0d2ca;
+.title-input::placeholder,
+.title-input.is-untitled {
+  color: var(--editor-placeholder);
 }
 
 .editor-divider {
@@ -269,15 +275,17 @@ kbd {
   border: 0;
   outline: 0;
   background: transparent;
-  color: #575b52;
-  font-size: 16px;
-  line-height: 1.7;
+  color: var(--editor-body);
+  font-family: var(--editor-font-family, var(--sans));
+  font-size: var(--editor-font-size, 18px);
+  line-height: var(--editor-line-height, 1.75);
 }
 
 .tiptap-content {
   min-height: inherit;
   outline: none;
   overflow-wrap: anywhere;
+  font: inherit;
 }
 
 .editor-status {
@@ -302,10 +310,11 @@ kbd {
 
 .app-shell.wide-page .editor {
   max-width: 1040px;
+  flex-basis: 1040px;
 }
 
 .tiptap-content p {
-  margin: 0 0 1em;
+  margin: 0 0 14px;
 }
 
 .tiptap-content h1,
@@ -332,7 +341,7 @@ kbd {
 .tiptap-content p.is-editor-empty:first-child::before {
   height: 0;
   float: left;
-  color: #b6b8b0;
+  color: var(--editor-placeholder);
   content: attr(data-placeholder);
   pointer-events: none;
 }
@@ -346,8 +355,8 @@ kbd {
 .tiptap-content code {
   padding: 2px 5px;
   border-radius: 4px;
-  background: #eeefeb;
-  color: #8d5149;
+  background: var(--block-surface);
+  color: var(--ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.88em;
 }
@@ -432,6 +441,7 @@ kbd {
 .tiptap-content .tableWrapper {
   max-width: 100%;
   margin: 1.4em 0;
+  padding-top: 46px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
@@ -523,13 +533,14 @@ kbd {
   position: fixed;
   z-index: 20;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   max-width: calc(100vw - 24px);
   padding: 5px;
   border: 1px solid var(--floating-border);
-  border-radius: 9px;
-  background: var(--floating-bg);
+  border-radius: 12px;
+  background: var(--toolbar-bg);
   box-shadow: 0 8px 26px #2527221c, 0 1px 3px #25272212;
   opacity: 0;
   pointer-events: none;
@@ -541,26 +552,18 @@ kbd {
 .slash-command-menu {
   position: fixed;
   z-index: 30;
-  width: min(300px, calc(100vw - 24px));
-  max-height: min(390px, calc(100vh - 24px));
-  padding: 7px;
+  width: min(370px, calc(100vw - 24px));
+  max-height: min(520px, calc(100dvh - 24px));
+  padding: 8px;
   overflow-y: auto;
   border: 1px solid var(--floating-border);
-  border-radius: 10px;
-  background: var(--floating-bg);
+  border-radius: 16px;
+  background: var(--menu-bg);
   box-shadow: 0 12px 32px #2527221c, 0 2px 5px #25272210;
 }
 
 .slash-command-menu[hidden] {
   display: none;
-}
-
-.slash-command-heading {
-  margin: 5px 8px 7px;
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
 }
 
 .slash-command-options {
@@ -571,9 +574,10 @@ kbd {
 .slash-command-option {
   display: flex;
   width: 100%;
+  min-height: 39px;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 7px 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -583,20 +587,27 @@ kbd {
 }
 
 .slash-command-option:hover,
-.slash-command-option:focus-visible,
-.slash-command-option[aria-selected="true"] {
+.slash-command-option:focus-visible {
   outline: none;
-  background: var(--floating-hover);
+  background: var(--menu-hover);
+}
+
+.slash-command-option[aria-selected="true"] {
+  background: var(--menu-active);
+}
+
+.slash-command-option.command-group-start {
+  margin-top: 5px;
+  border-top: 1px solid var(--floating-border);
+  border-radius: 0 0 6px 6px;
 }
 
 .slash-command-icon {
   display: grid;
-  width: 31px;
-  height: 31px;
+  width: 24px;
+  height: 24px;
   flex: none;
   place-items: center;
-  border: 1px solid var(--floating-border);
-  border-radius: 6px;
   color: var(--muted);
   font-family: var(--sans);
   font-size: 10px;
@@ -610,8 +621,8 @@ kbd {
 }
 
 .slash-command-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 400;
 }
 
 .slash-command-description {
@@ -629,6 +640,7 @@ kbd {
   position: fixed;
   z-index: 25;
   display: flex;
+  flex-direction: column;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--floating-border);
@@ -694,6 +706,7 @@ kbd {
   width: 12px;
   height: 16px;
   fill: currentColor;
+  pointer-events: none;
 }
 
 .block-drop-indicator {
@@ -846,6 +859,238 @@ kbd {
   }
 }
 
+.slash-command-icon svg,
+.editor-dock svg,
+.editor-command-menu svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.editor-dock {
+  position: fixed;
+  z-index: 18;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid var(--floating-border);
+  border-radius: 16px;
+  background: var(--toolbar-bg);
+  box-shadow: 0 6px 24px #0002;
+  transform: translateX(-50%);
+}
+
+.editor-dock button {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.editor-dock .dock-style {
+  width: 58px;
+  font-size: 13px;
+}
+
+.editor-dock button:hover,
+.editor-dock button:focus-visible,
+.editor-dock button[aria-pressed="true"],
+.editor-dock button[aria-expanded="true"] {
+  outline: none;
+  background: var(--floating-hover);
+  color: var(--ink);
+}
+
+.dock-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--floating-border);
+}
+
+.editor-command-menu {
+  position: fixed;
+  z-index: 31;
+  width: 260px;
+  padding: 7px;
+  overflow-y: auto;
+  border: 1px solid var(--floating-border);
+  border-radius: 14px;
+  background: var(--menu-bg);
+  box-shadow: 0 8px 30px #0002;
+}
+
+.editor-command-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 39px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+
+.editor-command-menu button:hover,
+.editor-command-menu button:focus-visible {
+  outline: none;
+  background: var(--menu-active);
+}
+
+.editor-command-menu button:disabled {
+  cursor: default;
+  opacity: .4;
+}
+
+.editor-form-fields {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  margin: 24px 0;
+  padding: 0;
+  border: 0;
+}
+
+.editor-form-fields label {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.editor-form-fields label span,
+.editor-insert-dialog .editor-field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.editor-form-fields input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--floating-border);
+  border-radius: 8px;
+  background: var(--block-surface);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.editor-form-fields input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor-insert-dialog .editor-field-error {
+  color: #c46b5b;
+}
+
+.tiptap-content [data-type="details"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 18px;
+}
+
+.tiptap-content [data-type="details"] > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.tiptap-content [data-type="details"] > button {
+  position: relative;
+  width: 25px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tiptap-content [data-type="details"] > button::before {
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+}
+
+.tiptap-content [data-type="details"].is-open > button::before {
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.tiptap-content [data-type="details"] > button:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.tiptap-content summary {
+  min-height: 30px;
+  color: var(--ink);
+  font-weight: 500;
+  list-style: none;
+}
+
+.tiptap-content summary:empty::before {
+  color: var(--editor-placeholder);
+  content: "Dropdown title";
+  pointer-events: none;
+}
+
+.tiptap-content [data-type="detailsContent"] {
+  padding: 9px 0 0 1px;
+}
+
+.tiptap-content .editor-image {
+  max-width: 100%;
+  margin: 20px 0;
+  border-radius: 8px;
+}
+
+.tiptap-content .editor-image img,
+.tiptap-content > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.tiptap-content .editor-image.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.tiptap-content .image-failed {
+  padding: 20px;
+  border: 1px dashed var(--floating-border);
+  background: var(--block-surface);
+}
+
+.tiptap-content .editor-image figcaption {
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .workspace-home { width: min(100%, 940px); padding: 48px 0 24px; }
 .home-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 38px; }
 .home-header h1 { margin: 8px 0; font: 38px/1.2 var(--serif); letter-spacing: -1px; }
@@ -875,7 +1120,6 @@ kbd {
   .home-empty { padding: 24px 0; }
 }
 
-.tiptap-content { font-family: var(--editor-font-family, var(--sans)); font-size: var(--editor-font-size, 18px); line-height: var(--editor-line-height, 1.75); }
 #writing-preferences { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 #writing-preferences h3 { font-size: 14px; }
 #preferences-status { color: var(--muted); font-size: 12px; }

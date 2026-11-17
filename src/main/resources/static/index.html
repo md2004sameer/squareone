@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f7f4" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#20211e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <meta name="description" content="A quiet space for your notes and ideas." />
     <title>Squareone — your space to think</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -13,8 +13,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/stylesdocs.css?v=30" />
-    <script defer src="/workspace-bootstrap.js?v=30"></script>
+    <link rel="stylesheet" href="/stylesdocs.css?v=31" />
+    <script defer src="/workspace-bootstrap.js?v=31"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -229,14 +229,14 @@
 
           <article class="editor" id="editor" hidden>
             <img id="document-cover" class="document-cover" alt="" hidden />
-            <input
+            <textarea
               class="title-input"
               id="title-input"
-              type="text"
+              rows="1"
               placeholder="Untitled"
               aria-label="Document title"
               maxlength="160"
-            />
+            ></textarea>
             <div class="content-input" id="content-input" aria-label="Document content"></div>
             <div class="editor-status">
               <span class="document-date" id="document-date"></span>
@@ -277,7 +277,6 @@
             </form>
           </div>
           <div class="slash-command-menu" id="slash-command-menu" role="listbox" aria-label="Block commands" hidden>
-            <p class="slash-command-heading">BASIC BLOCKS</p>
             <div class="slash-command-options" id="slash-command-options"></div>
             <p class="slash-command-empty" id="slash-command-empty" hidden>No matching commands</p>
           </div>
@@ -285,7 +284,7 @@
             <button class="block-control-button block-insert-button" id="block-insert-button" type="button" aria-label="Add a block after this block" title="Add a block">
               <span aria-hidden="true">+</span>
             </button>
-            <button class="block-control-button block-drag-button" id="block-drag-button" type="button" draggable="true" aria-label="Move block" aria-describedby="block-move-help" title="Drag to move · Alt + ↑/↓ to reorder">
+            <button class="block-control-button block-drag-button" id="block-drag-button" type="button" aria-label="Move block" aria-describedby="block-move-help" title="Drag to move · Alt + ↑/↓ to reorder">
               <svg viewBox="0 0 12 16" aria-hidden="true">
                 <circle cx="4" cy="3" r="1.25"></circle>
                 <circle cx="8" cy="3" r="1.25"></circle>
@@ -317,7 +316,35 @@
           </div>
           <button class="table-edge-control table-add-row" id="table-add-row" type="button" aria-label="Add row below" title="Add row below" hidden>+</button>
           <button class="table-edge-control table-add-column" id="table-add-column" type="button" aria-label="Add column after" title="Add column after" hidden>+</button>
+          <div class="editor-dock" id="editor-dock" role="toolbar" aria-label="Quick blocks" hidden>
+            <button type="button" class="dock-style" data-command-menu="style" aria-label="Text style" aria-haspopup="menu" aria-expanded="false" title="Text style"><span id="editor-style-label">Text</span><span aria-hidden="true">⌄</span></button>
+            <span class="dock-divider" aria-hidden="true"></span>
+            <button type="button" data-command-id="table" data-icon="table" aria-label="Insert table" title="Table"></button>
+            <button type="button" data-command-id="image" data-icon="image" aria-label="Insert image" title="Image"></button>
+            <button type="button" data-command-id="taskList" data-icon="checklist" aria-label="Toggle checklist" aria-pressed="false" title="Checklist"></button>
+            <button type="button" data-command-id="dropdown" data-icon="dropdown" aria-label="Insert dropdown" title="Dropdown"></button>
+            <button type="button" data-command-menu="all" data-icon="more" aria-label="More block commands" aria-haspopup="menu" aria-expanded="false" title="More commands"></button>
+          </div>
+          <div class="editor-command-menu" id="editor-command-menu" role="menu" aria-label="Block insertion" hidden></div>
         </section>
+        <dialog class="workspace-dialog editor-insert-dialog" id="editor-insert-dialog" aria-labelledby="editor-insert-title">
+          <div class="workspace-dialog-header"><h2 id="editor-insert-title">Insert image</h2><button type="button" data-close-insertion aria-label="Cancel insertion">×</button></div>
+          <form id="editor-insert-form">
+            <fieldset class="editor-form-fields" id="editor-image-fields">
+              <label for="editor-image-url">HTTPS image URL</label>
+              <input id="editor-image-url" type="url" placeholder="https://example.com/photo.jpg" autocomplete="url" required />
+              <label for="editor-image-alt">Alt text <span>(optional)</span></label>
+              <input id="editor-image-alt" type="text" maxlength="240" placeholder="Describe the image" />
+              <p class="editor-field-hint">Use a direct image link. The image stays hosted at its original URL.</p>
+            </fieldset>
+            <fieldset class="editor-form-fields" id="editor-date-fields" hidden disabled>
+              <label for="editor-date-value">Date</label>
+              <input id="editor-date-value" type="date" required />
+            </fieldset>
+            <p id="editor-insert-error" class="editor-field-error" role="alert" hidden></p>
+            <button class="primary-button" type="submit">Insert</button>
+          </form>
+        </dialog>
         <dialog class="workspace-dialog" id="conflict-dialog" aria-labelledby="conflict-title">
           <div class="workspace-dialog-header"><h2 id="conflict-title">Keep both sets of changes</h2><button id="conflict-close" type="button" aria-label="Close changes dialog">×</button></div>
           <p>Another device saved changes to <strong id="conflict-document-title"></strong>. Your unsynced draft is still in this browser.</p>

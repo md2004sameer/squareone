@@ -11,6 +11,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DocumentContentTextTests {
 
     @Test
+    void closedDropdownsAndBodyImagesHaveReadableExportFallbacks() throws Exception {
+        String content = "<details><summary>Project notes</summary><div data-type=\"detailsContent\">"
+                + "<p>Keep the nested writing.</p></div></details>"
+                + "<img src=\"https://example.com/diagram.png\" alt=\"Architecture sketch\">";
+        String expected = "Project notes\nKeep the nested writing.\nArchitecture sketch (https://example.com/diagram.png)";
+        assertThat(DocumentContentText.toPlainText(content)).isEqualTo(expected);
+        assertThat(DocumentContentText.toBlocks(content)).containsExactly(new TextBlock(expected));
+
+        var document = new com.squareone.model.Document();
+        document.setTitle("Editor blocks");
+        document.setContent(content);
+        assertThat(new String(new com.squareone.export.PlainTextDocumentExporter().export(document), java.nio.charset.StandardCharsets.UTF_8))
+                .contains(expected);
+        assertThat(new String(new com.squareone.export.PdfDocumentExporter().export(document), java.nio.charset.StandardCharsets.ISO_8859_1))
+                .contains("Project notes", "Keep the nested writing.", "https://example.com/diagram.png");
+        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(
+                new com.squareone.export.WordDocumentExporter().export(document)))) {
+            java.util.zip.ZipEntry entry;
+            String xml = "";
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.getName().equals("word/document.xml")) xml = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+            assertThat(xml).contains("Project notes", "Keep the nested writing.", "Architecture sketch", "https://example.com/diagram.png");
+        }
+    }
+
+    @Test
+    void imageOnlyDocumentsAreHtmlAndUseAnAltTextOrUrlFallback() {
+        assertThat(DocumentContentText.toPlainText("<img src=\"https://example.com/photo.jpg\">"))
+                .isEqualTo("Image (https://example.com/photo.jpg)");
+        assertThat(DocumentContentText.toBlocks("<img src=\"https://example.com/photo.jpg\" alt=\"Photo\">"))
+                .containsExactly(new TextBlock("Photo (https://example.com/photo.jpg)"));
+    }
+
+    @Test
     void extractsTextFromCalloutsAndKeepsFollowingBlocksSeparate() {
         String content = "<div data-type=\"callout\"><p>Remember this</p></div><p>After the callout</p>";
 
