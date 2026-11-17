@@ -2,6 +2,16 @@
 
 The public domain currently responds through Render. The repository includes a Docker build and `render.yaml` with the `production` profile, database health checks, HTTPS session cookies and manual deployments. Apply these settings to the **existing** Render service. Check its service name before importing the Blueprint; creating a second service does not update the existing domain.
 
+## Accounts disappear after a redeploy
+
+Older Docker images set `SPRING_DATASOURCE_URL=jdbc:h2:file:/data/squareone`. Without a persistent disk, Render replaces that local database when it replaces the container. Accounts, documents and sessions in that file disappear together. A successful health check on an old release only confirms that its selected database responds; it does not establish that the service uses Neon.
+
+Before replacing a service that still uses H2, preserve and verify a backup of its current database and export any important notes. Switching the connection to PostgreSQL does not import H2 records. Records from an already discarded container need an existing backup for recovery. Keep existing Neon records intact while reviewing any import.
+
+Configure the existing Render service's environment with the PostgreSQL values below, then deploy the verified current commit from `main`. The local `.env` is deliberately excluded from Git and the Docker image: pushing the repository never uploads its credentials to Render. `render.yaml` also uses `sync: false` for secrets, so those values must be set on the service itself. Keep the database endpoint and `DATABASE_SCHEMA=squareone` stable across subsequent deployments.
+
+The current application rejects H2 outside the isolated test profile and validates its schema instead of recreating it. `npm run test:persistence` verifies that sessions and data survive restart, and that a fresh browser can log into the original account with the same credentials. Run it only against its temporary database or an explicitly supplied disposable test database.
+
 ## Before the first upgraded deployment
 
 1. Back up the existing Neon/PostgreSQL database, including large objects (`pg_dump --format=custom` includes them by default for a full database dump). Restore the backup to a separate database and rehearse this release there. Keep the old deployment available until the rehearsal passes.

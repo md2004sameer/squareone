@@ -60,8 +60,13 @@ class Browser {
     if (body) headers['Content-Type'] = body instanceof URLSearchParams ? 'application/x-www-form-urlencoded' : 'application/json';
     const response = await fetch(`${base}${path}`, { method, headers, body: body instanceof URLSearchParams ? body.toString() : body ? JSON.stringify(body) : undefined });
     for (const cookie of response.headers.getSetCookie()) {
-      if (process.env.SQUAREONE_TEST_PROFILE === 'production' && cookie.startsWith('JSESSIONID=')) {
-        assert.match(cookie, /;\s*Secure/i, 'Production session cookies must be Secure');
+      if (cookie.startsWith('JSESSIONID=') && !/Max-Age=0(?:;|$)/i.test(cookie)) {
+        assert.match(cookie, /;\s*HttpOnly/i, 'Session cookies must be HTTP-only');
+        assert.match(cookie, /;\s*SameSite=Lax/i, 'Session cookies must use SameSite=Lax');
+        assert.match(cookie, /;\s*Max-Age=1209600(?:;|$)/i, 'Login cookies must persist for 14 days');
+        if (process.env.SQUAREONE_TEST_PROFILE === 'production') {
+          assert.match(cookie, /;\s*Secure/i, 'Production session cookies must be Secure');
+        }
       }
       const [pair] = cookie.split(';'); const index = pair.indexOf('=');
       this.cookies.set(pair.slice(0, index), pair.slice(index + 1));
@@ -109,8 +114,11 @@ try {
   assert.equal((await account.request('/api/documents')).length, 0);
   assert.equal((await account.request('/api/documents/archive'))[0].id, note.id);
   const active = await account.request(`/api/documents/${note.id}/organization`, { method: 'PUT', body: { archived: false, rowVersion: archived.rowVersion } });
-  await account.request(`/api/documents/${note.id}/appearance`, { method: 'PUT', body: { icon: '✳', coverRef: '/cover.png', rowVersion: active.rowVersion } });
+  const appearance = await account.request(`/api/documents/${note.id}/appearance`, { method: 'PUT', body: { icon: '✳', coverRef: '/cover.png', rowVersion: active.rowVersion } });
   await account.request(`/api/documents/${note.id}/appearance`, { method: 'PUT', status: 409, body: { icon: 'Stale', rowVersion: active.rowVersion } });
+  const expectedNote = await account.request(`/api/documents/${note.id}`, { method: 'PUT', body: {
+    title: 'Saved across deployment', content: '<p>Rich Ω हिन्दी</p>', contentJson, revision: appearance.revision,
+  } });
   const unsecured = await fetch(`${base}/api/documents`, { method: 'POST' });
   assert.equal(unsecured.status, 403, 'CSRF must remain required');
   const home = await fetch(base);
@@ -121,11 +129,23 @@ try {
   assert.equal((await guest.request('/api/auth/session')).workspaceId, guestSession.workspaceId);
   assert.equal((await guest.request(`/api/documents/${guestNote.id}`)).content, guestNote.content);
   assert.equal((await account.request('/api/auth/session')).authenticated, true, 'Login must survive server restart');
-  assert.equal((await account.request(`/api/documents/${note.id}`)).icon, '✳');
+  const persistedNote = await account.request(`/api/documents/${note.id}`);
+  for (const key of ['id', 'title', 'content', 'contentJson', 'revision', 'icon', 'coverRef', 'ownerId', 'workspaceId']) {
+    assert.deepEqual(persistedNote[key], expectedNote[key], `${key} must survive server restart`);
+  }
   const persistedPreferences = await account.request('/api/preferences');
   for (const [key, value] of Object.entries(prefs)) assert.deepEqual(persistedPreferences[key], value);
-  assert.equal((await account.request(`/api/documents/${note.id}/versions`)).length, 3);
-  console.log('PASS: restart preserves guest/account sessions, notes, JSON, preferences, workspaces and history; stale writes, ownership and CSRF are enforced.');
+  assert.equal((await account.request(`/api/documents/${note.id}/versions`)).length, 4);
+  // A lost browser cookie must require only login, never another signup.
+  const freshBrowser = new Browser();
+  await freshBrowser.request('/api/auth/login', { method: 'POST', status: 204, body: new URLSearchParams({ email, password: 'releasePass123' }) });
+  const recoveredIdentity = await freshBrowser.request('/api/auth/session');
+  assert.equal(recoveredIdentity.authenticated, true);
+  assert.equal(recoveredIdentity.userId, identity.userId, 'The original account must remain available after deployment');
+  assert.deepEqual(await freshBrowser.request(`/api/documents/${note.id}`), persistedNote);
+  assert.deepEqual(await freshBrowser.request('/api/preferences'), persistedPreferences);
+  await freshBrowser.request('/api/auth/signup', { method: 'POST', status: 409, body: { name: 'Duplicate', email, password: 'releasePass123' } });
+  console.log('PASS: restart preserves guest/account sessions, saved content/JSON, preferences, workspaces and history; a fresh browser logs into the original account without signup. Stale writes, ownership and CSRF are enforced.');
 } finally {
   await stop();
   await rm(temporary, { recursive: true, force: true });
