@@ -1045,6 +1045,7 @@ textEditor = new Editor({
   },
   onUpdate() {
     updateWordCount();
+    updateFormattingToolbar();
     onContentChange();
     syncSlashMenu();
     if (textEditor.isFocused) {
@@ -1087,6 +1088,7 @@ textEditor = new Editor({
     }, 0);
   },
 });
+bindFormattingToolbar();
 window.addEventListener("resize", () => {
   onResize();
   if (!elements.toolbar.hidden) {

@@ -5,7 +5,7 @@ import { contentToPlainText, editorContentFromStored } from "./document-content.
 import { createDocumentController } from "./document-controller.js?v=27";
 import { createDocumentStorage } from "./document-storage.js?v=25";
 import { createDocumentUi } from "./document-ui.js?v=25";
-import { initializeEditorUi } from "./editor-ui.js?v=25";
+import { initializeEditorUi } from "./editor-ui.js?v=26";
 import { createSidebarController } from "./sidebar-controller.js?v=25";
 import { createThemeController } from "./theme-controller.js?v=25";
 import { createTrashController } from "./trash-controller.js?v=25";

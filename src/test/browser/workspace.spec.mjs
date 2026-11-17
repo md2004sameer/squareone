@@ -279,6 +279,82 @@ test('archived notes remain reachable and can be restored from Archive', async (
   await expect(page.locator('#editor .tiptap-content')).toContainText('Keep this archive body.');
 });
 
+test('selection toolbar applies and toggles text styles and headings', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  const editor = page.locator('#editor .tiptap-content');
+  await editor.fill('Format this text');
+  // Select the text itself so the editor's automatic trailing paragraph stays outside the selection.
+  for (const character of 'Format this text') {
+    await editor.press('Shift+ArrowLeft');
+  }
+  const toolbar = page.getByRole('toolbar', { name: 'Text formatting', exact: true });
+  await expect(toolbar).toBeVisible();
+
+  for (const [label, tag] of [
+    ['Bold', 'strong'], ['Italic', 'em'], ['Underline', 'u'],
+    ['Strikethrough', 's'], ['Inline code', 'code'],
+  ]) {
+    const button = toolbar.getByRole('button', { name: label, exact: true });
+    await button.click();
+    await expect(editor.locator(tag)).toHaveText('Format this text');
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await button.click();
+    await expect(editor.locator(tag)).toHaveCount(0);
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+  }
+  for (const level of [1, 2, 3]) {
+    const button = toolbar.getByRole('button', { name: `H${level}`, exact: true });
+    await button.click();
+    await expect(editor.locator(`h${level}`)).toHaveText('Format this text');
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await button.click();
+    await expect(editor.locator('p').first()).toHaveText('Format this text');
+    await expect(editor.locator(`h${level}`)).toHaveCount(0);
+  }
+  await saved(page);
+});
+
+test('selection toolbar colors, highlights and links persist after reload', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  const editor = page.locator('#editor .tiptap-content');
+  await editor.fill('Keep my formatting');
+  await editor.press('ControlOrMeta+a');
+  const toolbar = page.getByRole('toolbar', { name: 'Text formatting', exact: true });
+
+  await toolbar.getByRole('button', { name: 'Text color', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Text color #d44c47', exact: true }).click();
+  await expect(editor.locator('span')).toHaveCSS('color', 'rgb(212, 76, 71)');
+  await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Highlight #fef3c7', exact: true }).click();
+  await expect(editor.locator('mark')).toHaveCSS('background-color', 'rgb(254, 243, 199)');
+  await toolbar.getByRole('button', { name: 'Link', exact: true }).click();
+  await toolbar.getByRole('textbox', { name: 'Link URL', exact: true }).fill('https://example.com/toolbar');
+  await toolbar.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com/toolbar');
+  await saved(page);
+  const [entry] = await (await page.request.get('/api/documents')).json();
+  await page.reload();
+  await page.locator(`#document-tree-${entry.id}`).click();
+  await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com/toolbar');
+  await expect(editor.locator('span')).toHaveCSS('color', 'rgb(212, 76, 71)');
+  await expect(editor.locator('mark')).toHaveCSS('background-color', 'rgb(254, 243, 199)');
+
+  await editor.click();
+  await editor.press('ControlOrMeta+a');
+  await toolbar.getByRole('button', { name: 'Text color', exact: true }).click();
+  await page.locator('#text-color-palette').getByRole('button', { name: 'Default', exact: true }).click();
+  await expect(editor.locator('span[style*="color"]')).toHaveCount(0);
+  await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+  await page.locator('#highlight-palette').getByRole('button', { name: 'Default', exact: true }).click();
+  await expect(editor.locator('mark')).toHaveCount(0);
+  await toolbar.getByRole('button', { name: 'Link', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(editor.locator('a')).toHaveCount(0);
+  await saved(page);
+});
+
 test('rich formatting, version previews, restore and document details work together', async ({ page }) => {
   await openWorkspace(page);
   const html = '<h1>Rich heading</h1><p><strong>Bold text</strong> <u>Underlined text</u> <a href="https://example.com">A link</a> <span style="color: #ff0000">Color text</span></p><table><tbody><tr><td><p>Cell one</p></td><td><p>Cell two</p></td></tr></tbody></table>';
