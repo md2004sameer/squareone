@@ -48,6 +48,8 @@ public class SecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             DocumentService documentService,
+            com.squareone.service.AccountService accountService,
+            com.squareone.repository.AppUserRepository appUserRepository,
             SecurityContextRepository securityContextRepository,
             @Value("${server.servlet.session.cookie.secure:false}") boolean secureCookies) throws Exception {
         CookieCsrfTokenRepository csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
@@ -59,6 +61,11 @@ public class SecurityConfiguration {
                 .secure(secureCookies));
 
         http
+                .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                        + "font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; "
+                        + "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")))
+                .addFilterAfter(new AccountStatusFilter(appUserRepository), org.springframework.security.web.context.SecurityContextHolderFilter.class)
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
@@ -68,7 +75,7 @@ public class SecurityConfiguration {
                                 "/", "/index.html", "/stylesdocs.css", "/appdocs.js",
                                 "/api/auth/session", "/api/auth/csrf", "/api/auth/signup", "/error")
                         .permitAll()
-                        .requestMatchers("/api/auth/profile", "/api/auth/password")
+                        .requestMatchers("/api/auth/profile", "/api/auth/password", "/api/preferences/**", "/api/workspaces/**")
                         .authenticated()
                         .requestMatchers("/api/documents/**")
                         .permitAll()
@@ -81,7 +88,7 @@ public class SecurityConfiguration {
                         .usernameParameter("email")
                         .passwordParameter("password")
                         .successHandler((request, response, authentication) ->
-                                transferGuestDocuments(documentService, request.getSession(false), authentication, response))
+                                transferGuestDocuments(documentService, accountService, request.getSession(false), authentication, response))
                         .failureHandler((request, response, exception) -> writeJsonError(
                                 response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid email or password")))
                 .logout(logout -> logout
@@ -103,6 +110,7 @@ public class SecurityConfiguration {
 
     private void transferGuestDocuments(
             DocumentService documentService,
+            com.squareone.service.AccountService accountService,
             jakarta.servlet.http.HttpSession session,
             Authentication authentication,
             HttpServletResponse response) throws IOException {
@@ -110,7 +118,7 @@ public class SecurityConfiguration {
             Object guestId = session.getAttribute(GuestSessionService.GUEST_ID_ATTRIBUTE);
             if (guestId instanceof String id) {
                 AppUserDetails principal = (AppUserDetails) authentication.getPrincipal();
-                documentService.transferGuestDocuments(id, principal.user());
+                documentService.transferGuestDocuments(id, accountService.getUser(principal.userId()));
                 session.removeAttribute(GuestSessionService.GUEST_ID_ATTRIBUTE);
             }
         }

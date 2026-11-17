@@ -26,6 +26,10 @@ import com.squareone.export.WordDocumentExporter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(properties = {
+        "spring.config.import=",
+        "DATABASE_SCHEMA=PUBLIC",
+        "spring.datasource.username=sa", "spring.datasource.password=",
+        "spring.autoconfigure.exclude=org.springframework.boot.session.jdbc.autoconfigure.JdbcSessionAutoConfiguration",
 		"spring.datasource.url=jdbc:h2:mem:squareone-test;DB_CLOSE_DELAY=-1"
 })
 class SquareoneApplicationTests {
@@ -35,6 +39,8 @@ class SquareoneApplicationTests {
 
 	@Autowired
 	private AppUserRepository appUserRepository;
+
+    @Autowired private com.squareone.service.WorkspaceService workspaceService;
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
@@ -80,6 +86,7 @@ class SquareoneApplicationTests {
 		Document document = sampleDocument();
 		AppUser owner = createUser();
 		document.setOwnerUser(owner);
+        document.setWorkspaceId(owner.getId());
 		document.setTitle("My note / 1");
 		documentRepository.save(document);
 
@@ -104,6 +111,7 @@ class SquareoneApplicationTests {
 		Document document = sampleDocument();
 		AppUser owner = createUser();
 		document.setOwnerUser(owner);
+        document.setWorkspaceId(owner.getId());
 		document.setContent("<h1>A heading</h1><p>First <strong>sentence</strong>.</p><p>Second paragraph.</p>");
 		documentRepository.save(document);
 
@@ -189,6 +197,7 @@ class SquareoneApplicationTests {
 		Document document = sampleDocument();
 		AppUser owner = createUser();
 		document.setOwnerUser(owner);
+        document.setWorkspaceId(owner.getId());
 		documentRepository.save(document);
 
 		String shareUrl = whatsAppShareService.createShareUrl(document.getId(), DocumentOwner.user(owner.getId()));
@@ -209,7 +218,9 @@ class SquareoneApplicationTests {
 
 	private AppUser createUser() {
 		String email = "test-" + java.util.UUID.randomUUID() + "@example.com";
-		return appUserRepository.save(new AppUser("Test user", email, passwordEncoder.encode("password123"), "#617459"));
+		AppUser user = appUserRepository.save(new AppUser("Test user", email, passwordEncoder.encode("password123"), "#617459"));
+        workspaceService.defaultForUser(user.getId());
+        return user;
 	}
 
 }

@@ -1,131 +1,35 @@
-import { Editor, mergeAttributes, Node } from "https://esm.sh/@tiptap/core@2.11.5";
-import StarterKit from "https://esm.sh/@tiptap/starter-kit@2.11.5";
-import Underline from "https://esm.sh/@tiptap/extension-underline@2.11.5";
-import Link from "https://esm.sh/@tiptap/extension-link@2.11.5";
-import TextStyle from "https://esm.sh/@tiptap/extension-text-style@2.11.5";
-import Color from "https://esm.sh/@tiptap/extension-color@2.11.5";
-import Highlight from "https://esm.sh/@tiptap/extension-highlight@2.11.5";
-import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@2.11.5";
-import TaskList from "https://esm.sh/@tiptap/extension-task-list@2.11.5";
-import TaskItem from "https://esm.sh/@tiptap/extension-task-item@2.11.5";
-import Table from "https://esm.sh/@tiptap/extension-table@2.11.5";
-import TableRow from "https://esm.sh/@tiptap/extension-table-row@2.11.5";
-import TableCell from "https://esm.sh/@tiptap/extension-table-cell@2.11.5";
-import TableHeader from "https://esm.sh/@tiptap/extension-table-header@2.11.5";
-
-const API_URL = "/api/documents";
-const SAVE_DELAY = 650;
-const LOCAL_DRAFT_PREFIX = "squareone.document-draft.v2:";
-const LOCAL_DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const SIDEBAR_WIDTH_KEY = "squareone.sidebar-width.v1";
-const MIN_SIDEBAR_WIDTH = 220;
-const MAX_SIDEBAR_WIDTH = 420;
-
-const Callout = Node.create({
-  name: "callout",
-  group: "block",
-  content: "block+",
-  defining: true,
-  parseHTML() {
-    return [{ tag: 'div[data-type="callout"]' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "callout" }), 0];
-  },
-});
-
-const slashCommands = [
-  {
-    title: "Heading 1",
-    icon: "H1",
-    description: "Large section heading",
-    keywords: "heading title h1",
-    command: (chain) => chain.setNode("heading", { level: 1 }),
-  },
-  {
-    title: "Heading 2",
-    icon: "H2",
-    description: "Medium section heading",
-    keywords: "heading h2",
-    command: (chain) => chain.setNode("heading", { level: 2 }),
-  },
-  {
-    title: "Heading 3",
-    icon: "H3",
-    description: "Small section heading",
-    keywords: "heading h3",
-    command: (chain) => chain.setNode("heading", { level: 3 }),
-  },
-  {
-    title: "Bullet List",
-    icon: "•",
-    description: "Create a simple list",
-    keywords: "bullet bulleted list unordered",
-    command: (chain) => chain.toggleBulletList(),
-  },
-  {
-    title: "Numbered List",
-    icon: "1.",
-    description: "Create a numbered list",
-    keywords: "numbered ordered list",
-    command: (chain) => chain.toggleOrderedList(),
-  },
-  {
-    title: "To-do List",
-    icon: "☐",
-    description: "Track tasks with a checklist",
-    keywords: "todo to-do task checklist",
-    command: (chain) => chain.toggleTaskList(),
-  },
-  {
-    title: "Quote",
-    icon: "“",
-    description: "Capture a quotation",
-    keywords: "quote blockquote",
-    command: (chain) => chain.toggleBlockquote(),
-  },
-  {
-    title: "Code Block",
-    icon: "</>",
-    description: "Display code with formatting",
-    keywords: "code pre",
-    command: (chain) => chain.toggleCodeBlock(),
-  },
-  {
-    title: "Divider",
-    icon: "—",
-    description: "Separate sections with a line",
-    keywords: "divider horizontal rule",
-    command: (chain) => chain.setHorizontalRule(),
-  },
-  {
-    title: "Callout",
-    icon: "✳",
-    description: "Highlight an important note",
-    keywords: "callout note",
-    command: (chain) => chain.wrapIn("callout"),
-  },
-  {
-    title: "Table",
-    icon: "▦",
-    description: "Insert a 3 × 3 table",
-    keywords: "table grid rows columns spreadsheet",
-    command: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: false }),
-  },
-];
+import { createPreferencesController } from "./preferences-controller.js?v=25";
+import { createAccountController } from "./account-controller.js?v=25";
+import { createAccountUi } from "./account-ui.js?v=25";
+import { contentToPlainText, editorContentFromStored } from "./document-content.js?v=25";
+import { createDocumentController } from "./document-controller.js?v=25";
+import { createDocumentStorage } from "./document-storage.js?v=25";
+import { createDocumentUi } from "./document-ui.js?v=25";
+import { initializeEditorUi } from "./editor-ui.js?v=25";
+import { createSidebarController } from "./sidebar-controller.js?v=25";
+import { createThemeController } from "./theme-controller.js?v=25";
+import { createTrashController } from "./trash-controller.js?v=25";
+import { createWorkspaceHome } from "./workspace-home.js?v=25";
+import { createArchiveController } from "./archive-controller.js?v=25";
+import { createDocumentDetails } from "./document-details.js?v=25";
 
 const elements = {
   list: document.querySelector("#document-list"),
-  sidebarDocumentOutline: document.querySelector("#sidebar-document-outline"),
-  sidebarDocumentTitle: document.querySelector("#sidebar-document-title"),
-  sidebarOutlineList: document.querySelector("#sidebar-outline-list"),
-  sidebarOutlineEmpty: document.querySelector("#sidebar-outline-empty"),
-  sidebarBack: document.querySelector("#sidebar-back"),
+  favoriteList: document.querySelector("#favorite-list"),
+  favoritesSection: document.querySelector("#favorites-section"),
+  documentOutlineTitle: document.querySelector("#document-outline-title"),
+  documentOutlineList: document.querySelector("#document-outline-list"),
+  documentOutlinePane: document.querySelector("#document-outline-pane"),
   count: document.querySelector("#document-count"),
   search: document.querySelector("#search"),
+  searchShortcut: document.querySelector("#search-shortcut"),
+  searchToggle: document.querySelector("#search-toggle"),
   newButton: document.querySelector("#new-document"),
   welcomeCreate: document.querySelector("#welcome-create"),
   welcome: document.querySelector("#welcome-state"),
+  workspaceLoading: document.querySelector("#workspace-loading"),
+  workspaceError: document.querySelector("#workspace-error"),
+  workspaceRetry: document.querySelector("#workspace-retry"),
   editor: document.querySelector("#editor"),
   title: document.querySelector("#title-input"),
   content: document.querySelector("#content-input"),
@@ -148,9 +52,12 @@ const elements = {
   tableActionsMenu: document.querySelector("#table-actions-menu"),
   tableAddRow: document.querySelector("#table-add-row"),
   tableAddColumn: document.querySelector("#table-add-column"),
-  breadcrumb: document.querySelector("#breadcrumb-title"),
+  breadcrumbTrail: document.querySelector(".breadcrumb"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
+  characterCount: document.querySelector("#character-count"),
+  focusToggle: document.querySelector("#focus-toggle"),
+  widePageToggle: document.querySelector("#wide-page-toggle"),
   deleteButton: document.querySelector("#delete-document"),
   documentActions: document.querySelector("#document-actions"),
   whatsappButton: document.querySelector("#share-whatsapp"),
@@ -158,14 +65,18 @@ const elements = {
   saveStatusText: document.querySelector("#save-status-text"),
   toast: document.querySelector("#toast"),
   appShell: document.querySelector(".app-shell"),
+  workspace: document.querySelector(".workspace"),
   sidebar: document.querySelector(".sidebar"),
+  sidebarClose: document.querySelector("#sidebar-close"),
+  sidebarBackdrop: document.querySelector("#sidebar-backdrop"),
   sidebarResizeHandle: document.querySelector("#sidebar-resize-handle"),
+  sidebarToggle: document.querySelector("#sidebar-toggle"),
   accountMenu: document.querySelector("#account-menu"),
   accountMenuTrigger: document.querySelector("#account-menu-trigger"),
   accountMenuPanel: document.querySelector("#account-menu-panel"),
+  accountTheme: document.querySelector("#account-theme"),
   accountAvatar: document.querySelector("#account-avatar"),
   accountMenuName: document.querySelector("#account-menu-name"),
-  accountMenuEmail: document.querySelector("#account-menu-email"),
   accountProfile: document.querySelector("#account-profile"),
   accountSettings: document.querySelector("#account-settings"),
   accountLogin: document.querySelector("#account-login"),
@@ -192,41 +103,30 @@ const elements = {
   accountSubmit: document.querySelector("#account-submit"),
   accountModeToggle: document.querySelector("#account-mode-toggle"),
   accountGuestContinue: document.querySelector("#account-guest-continue"),
-  sidebarFooterCopy: document.querySelector("#sidebar-footer-copy"),
 };
 
 let documents = [];
 let activeDocumentId = null;
-let saveTimer = null;
-let saveQueue = Promise.resolve();
 let toastTimer = null;
-let localDraftWarningShown = false;
-let sidebarResizePointerId = null;
-let sidebarWidth = 278;
-let documentOpenRequest = 0;
-let textEditor = null;
-let toolbarHideTimer = null;
-let toolbarPositionFrame = null;
-let currentUser = { authenticated: false, name: "Guest", email: null, avatar: "G", avatarColor: "#617459" };
-let csrfToken = null;
-let csrfHeaderName = "X-XSRF-TOKEN";
-let accountDialogMode = "login";
-let slashRange = null;
-let slashMatches = [];
-let slashActiveIndex = 0;
-let slashQuery = null;
-let currentBlock = null;
-let activeBlockDrag = null;
-let blockDropPosition = null;
-let touchBlockDrag = null;
-let activeTable = null;
+let editorUi = null;
+let workspaceHome = null;
+let preferencesController = null;
+let currentUser = {
+  authenticated: false,
+  name: "Guest",
+  email: null,
+  avatar: "G",
+  avatarColor: "#617459",
+};
 
 function setSaveStatus(status, text) {
-  elements.saveStatus.classList.remove("saving", "error");
+  elements.saveStatus.classList.remove("saving", "error", "local", "waiting");
   if (status !== "saved") {
     elements.saveStatus.classList.add(status);
   }
   elements.saveStatusText.textContent = text;
+  elements.saveStatus.dataset.state = status;
+  document.querySelector("#retry-sync").hidden = status === "saved" || status === "saving";
 }
 
 function showToast(message) {
@@ -236,1776 +136,238 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => elements.toast.classList.remove("visible"), 4000);
 }
 
-function updateAccountMenu() {
-  elements.accountAvatar.textContent = currentUser.avatar || "G";
-  elements.accountAvatar.style.backgroundColor = currentUser.avatarColor || "#617459";
-  elements.accountMenuName.textContent = currentUser.name || "Guest";
-  elements.accountMenuEmail.textContent = currentUser.authenticated
-    ? currentUser.email
-    : "Private guest space";
-  elements.accountProfile.hidden = !currentUser.authenticated;
-  elements.accountSettings.hidden = !currentUser.authenticated;
-  elements.accountLogin.hidden = currentUser.authenticated;
-  elements.accountLogout.hidden = !currentUser.authenticated;
-  elements.sidebarFooterCopy.textContent = currentUser.authenticated
-    ? "Your notes, just yours."
-    : "Your private guest space.";
-}
-
-function setAccountField(field, input, visible, required = false) {
-  field.hidden = !visible;
-  input.disabled = !visible;
-  input.required = visible && required;
-}
-
-function showAccountDialog(mode) {
-  accountDialogMode = mode;
-  elements.accountFormError.hidden = true;
-  elements.accountFormError.textContent = "";
-  const isLogin = mode === "login";
-  const isSignup = mode === "signup";
-  const isProfile = mode === "profile";
-  const isSettings = mode === "settings";
-
-  elements.accountDialogEyebrow.textContent = isProfile || isSettings ? "Your account" : "Your Squareone";
-  elements.accountDialogTitle.textContent = {
-    login: "Log in",
-    signup: "Create your account",
-    profile: "Profile",
-    settings: "Settings",
-  }[mode];
-  elements.accountDialogCopy.textContent = {
-    login: "Log in to bring your notes with you anywhere.",
-    signup: "Your guest notes will move safely into your new account.",
-    profile: "Update the name, email, and avatar for your account.",
-    settings: "Change your password to keep your account secure.",
-  }[mode];
-  elements.accountSubmit.textContent = {
-    login: "Log in",
-    signup: "Create account",
-    profile: "Save profile",
-    settings: "Update password",
-  }[mode];
-  setAccountField(elements.accountNameField, elements.accountNameInput, isSignup || isProfile, isSignup || isProfile);
-  setAccountField(elements.accountEmailField, elements.accountEmailInput, isLogin || isSignup || isProfile, isLogin || isSignup || isProfile);
-  setAccountField(elements.accountPasswordField, elements.accountPasswordInput, isLogin || isSignup, isLogin || isSignup);
-  setAccountField(elements.accountAvatarColorField, elements.accountAvatarColorInput, isProfile);
-  setAccountField(elements.accountCurrentPasswordField, elements.accountCurrentPasswordInput, isSettings, isSettings);
-  setAccountField(elements.accountNewPasswordField, elements.accountNewPasswordInput, isSettings, isSettings);
-  elements.accountModeToggle.hidden = !isLogin && !isSignup;
-  elements.accountGuestContinue.hidden = !isLogin && !isSignup;
-  elements.accountModeToggle.textContent = isLogin
-    ? "New here? Create an account"
-    : "Already have an account? Log in";
-
-  if (isProfile) {
-    elements.accountNameInput.value = currentUser.name || "";
-    elements.accountEmailInput.value = currentUser.email || "";
-    elements.accountAvatarColorInput.value = currentUser.avatarColor || "#617459";
-  }
-  if (isSettings) {
-    elements.accountCurrentPasswordInput.value = "";
-    elements.accountNewPasswordInput.value = "";
-  }
-  if (!elements.accountDialog.open) {
-    elements.accountDialog.showModal();
-  }
-  elements.accountDialog.querySelector("input:not(:disabled)")?.focus();
-}
-
-function showAccountFormError(message) {
-  elements.accountFormError.textContent = message;
-  elements.accountFormError.hidden = false;
-}
-
-function closeAccountMenu() {
-  elements.accountMenuPanel.hidden = true;
-  elements.accountMenuTrigger.setAttribute("aria-expanded", "false");
-}
-
-function reportLocalDraftError(error) {
-  if (!localDraftWarningShown) {
-    showToast("Browser storage is unavailable. Your local draft may not be saved.");
-    localDraftWarningShown = true;
-  }
-  console.error("Unable to access local document storage:", error);
-}
-
-function removeLocalDraft(documentId) {
-  try {
-    window.localStorage.removeItem(`${localDraftPrefix()}${documentId}`);
-  } catch (error) {
-    reportLocalDraftError(error);
-  }
-}
-
-function saveLocalDraft(document) {
-  try {
-    window.localStorage.setItem(
-      `${localDraftPrefix()}${document.id}`,
-      JSON.stringify({
-        title: document.title,
-        content: document.content,
-        updatedAt: document.updatedAt,
-        expiresAt: Date.now() + LOCAL_DRAFT_TTL_MS,
-      }),
-    );
-    localDraftWarningShown = false;
-  } catch (error) {
-    reportLocalDraftError(error);
-  }
-}
-
-function loadLocalDraft(documentId) {
-  let serializedDraft;
-  try {
-    serializedDraft = window.localStorage.getItem(`${localDraftPrefix()}${documentId}`);
-  } catch (error) {
-    reportLocalDraftError(error);
-    return null;
-  }
-  if (!serializedDraft) {
-    return null;
-  }
-
-  let draft;
-  try {
-    draft = JSON.parse(serializedDraft);
-  } catch (error) {
-    console.warn("Removing an unreadable local document draft:", error);
-    removeLocalDraft(documentId);
-    return null;
-  }
-
-  if (
-    !draft
-    || typeof draft.title !== "string"
-    || typeof draft.content !== "string"
-    || !Number.isFinite(draft.updatedAt)
-    || !Number.isFinite(draft.expiresAt)
-  ) {
-    removeLocalDraft(documentId);
-    return null;
-  }
-  if (draft.expiresAt <= Date.now()) {
-    removeLocalDraft(documentId);
-    return null;
-  }
-  return draft;
-}
-
-function loadLocalDraftDocuments() {
-  try {
-    const prefix = localDraftPrefix();
-    const documentIds = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(prefix)) {
-        documentIds.push(key.slice(prefix.length));
-      }
-    }
-    return documentIds.flatMap((id) => {
-      const draft = loadLocalDraft(id);
-      return draft
-        ? [{ id, title: draft.title, content: draft.content, createdAt: draft.updatedAt, updatedAt: draft.updatedAt }]
-        : [];
-    });
-  } catch (error) {
-    reportLocalDraftError(error);
-    return [];
-  }
-}
-
-function localDraftPrefix() {
-  const workspaceId = currentUser.workspaceId;
-  return workspaceId ? `${LOCAL_DRAFT_PREFIX}${workspaceId}:` : `${LOCAL_DRAFT_PREFIX}unavailable:`;
-}
-
-function rekeyLocalDrafts(previousWorkspaceId, nextWorkspaceId) {
-  if (!previousWorkspaceId || !nextWorkspaceId || previousWorkspaceId === nextWorkspaceId) {
-    return;
-  }
-  const oldPrefix = `${LOCAL_DRAFT_PREFIX}${previousWorkspaceId}:`;
-  const newPrefix = `${LOCAL_DRAFT_PREFIX}${nextWorkspaceId}:`;
-  try {
-    const oldKeys = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(oldPrefix)) {
-        oldKeys.push(key);
-      }
-    }
-    for (const oldKey of oldKeys) {
-      const newKey = `${newPrefix}${oldKey.slice(oldPrefix.length)}`;
-      const value = window.localStorage.getItem(oldKey);
-      if (value !== null) {
-        window.localStorage.setItem(newKey, value);
-        window.localStorage.removeItem(oldKey);
-      }
-    }
-  } catch (error) {
-    reportLocalDraftError(error);
-  }
-}
-
-async function request(url, options = {}) {
-  const method = (options.method || "GET").toUpperCase();
-  const headers = {
-    ...(options.body && !(options.body instanceof URLSearchParams) ? { "Content-Type": "application/json" } : {}),
-    ...options.headers,
-  };
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    if (!csrfToken) {
-      const csrfResponse = await fetch("/api/auth/csrf");
-      if (!csrfResponse.ok) {
-        throw new Error("Couldn't prepare a secure request. Please refresh and try again.");
-      }
-      const csrf = await csrfResponse.json();
-      csrfToken = csrf.token;
-      csrfHeaderName = csrf.headerName || csrfHeaderName;
-    }
-    headers[csrfHeaderName] = csrfToken;
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    method,
-    headers,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    let message = `Request failed (${response.status})`;
-    if (body) {
-      try {
-        message = JSON.parse(body).message || message;
-      } catch {
-        message = body;
-      }
-    }
-    const error = new Error(message);
-    error.status = response.status;
-    throw error;
-  }
-
-  if (url === "/api/auth/login" || url === "/api/auth/logout") {
-    csrfToken = null;
-  }
-  if (response.status === 204) {
-    return null;
-  }
-  return response.json();
-}
-
-function escapeHtml(text) {
-  return text.replace(/[&<>"']/gu, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  })[character]);
-}
-
-function editorContentFromStored(content) {
-  if (!content) {
-    return "";
-  }
-  if (/<(?:p|h[1-3]|blockquote|pre|ul|ol|li|div|table|thead|tbody|tr|th|td|strong|b|em|i|u|s|del|code|mark|span|a|br)\b/iu.test(content)) {
-    return content;
-  }
-  return content.split(/\n{2,}/u)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/gu, "<br>")}</p>`)
-    .join("");
-}
-
-function contentToPlainText(content) {
-  if (!content || !/<[a-z][^>]*>/iu.test(content)) {
-    return content || "";
-  }
-
-  const parsed = new DOMParser().parseFromString(content, "text/html");
-  const blockTags = new Set(["BLOCKQUOTE", "DIV", "H1", "H2", "H3", "LI", "OL", "P", "PRE", "TR", "UL"]);
-  let text = "";
-  let tableCellDepth = 0;
-  let cellHasBlockText = false;
-  const appendLineBreak = () => {
-    if (text && !text.endsWith("\n")) {
-      text += "\n";
-    }
-  };
-  const trimTrailingLineBreaks = () => {
-    text = text.replace(/\n+$/u, "");
-  };
-  const visit = (node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      text += node.nodeValue;
-      if (tableCellDepth > 0 && node.nodeValue) {
-        cellHasBlockText = true;
-      }
-      return;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) {
-      return;
-    }
-    if (
-      node.nodeType === Node.ELEMENT_NODE
-      && (node.tagName === "TD" || node.tagName === "TH")
-    ) {
-      if (node.previousElementSibling) {
-        text += "\t";
-      }
-      tableCellDepth += 1;
-      cellHasBlockText = false;
-    }
-    const isBlock = node.nodeType === Node.ELEMENT_NODE && blockTags.has(node.tagName);
-    if (isBlock && tableCellDepth > 0) {
-      if (cellHasBlockText) {
-        appendLineBreak();
-        cellHasBlockText = false;
-      }
-    } else if (isBlock) {
-      appendLineBreak();
-    }
-    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "BR") {
-      appendLineBreak();
-    } else {
-      node.childNodes.forEach(visit);
-    }
-    if (isBlock && tableCellDepth === 0) {
-      appendLineBreak();
-    }
-    if (
-      node.nodeType === Node.ELEMENT_NODE
-      && (node.tagName === "TD" || node.tagName === "TH")
-    ) {
-      trimTrailingLineBreaks();
-      tableCellDepth -= 1;
-      cellHasBlockText = false;
-    }
-  };
-  visit(parsed.body);
-  return text.replace(/^\n+|\n+$/gu, "").replace(/\n{3,}/gu, "\n\n");
-}
-
-function sortDocuments() {
-  documents.sort((first, second) => second.updatedAt - first.updatedAt);
-}
-
-function showSidebarDocument(documentEntry) {
-  elements.sidebarDocumentTitle.textContent = documentEntry.title?.trim() || "Untitled";
-  renderSidebarOutline(documentEntry.content || "");
-  elements.sidebarDocumentOutline.hidden = false;
-  elements.sidebar.classList.add("sidebar-showing-document");
-}
-
-function renderSidebarOutline(content) {
-  elements.sidebarOutlineList.replaceChildren();
-  const paragraphs = [];
-  textEditor?.state.doc.descendants((node, position) => {
-    if (node.isTextblock && node.textContent.trim()) {
-      paragraphs.push({
-        text: node.textContent.trim(),
-        from: position + 1,
-        to: position + node.nodeSize - 1,
-      });
-    }
-  });
-  if (paragraphs.length === 0) {
-    contentToPlainText(content).split(/\n+/u).forEach((text) => {
-      if (text.trim()) {
-        paragraphs.push({ text: text.trim(), from: null, to: null });
-      }
-    });
-  }
-  let paragraphNumber = 0;
-  for (const paragraph of paragraphs) {
-    const text = paragraph.text;
-    paragraphNumber += 1;
-
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "sidebar-outline-item";
-    button.setAttribute("aria-label", `Go to paragraph ${paragraphNumber}: ${text}`);
-    button.addEventListener("click", () => {
-      if (paragraph.from !== null) {
-        textEditor.commands.setTextSelection({ from: paragraph.from, to: paragraph.to });
-        textEditor.commands.focus();
-      }
-    });
-
-    const number = document.createElement("span");
-    number.className = "sidebar-outline-number";
-    number.setAttribute("aria-hidden", "true");
-    number.textContent = String(paragraphNumber);
-
-    const preview = document.createElement("span");
-    preview.className = "sidebar-outline-text";
-    preview.textContent = text.replace(/\s+/gu, " ");
-
-    button.append(number, preview);
-    item.append(button);
-    elements.sidebarOutlineList.append(item);
-  }
-
-  elements.sidebarOutlineEmpty.hidden = paragraphNumber > 0;
-}
-
-function showDocumentList() {
-  elements.sidebarDocumentOutline.hidden = true;
-  elements.sidebar.classList.remove("sidebar-showing-document");
-  const activeItem = Array.from(elements.list.children).find(
-    (item) => item.dataset.documentId === activeDocumentId,
-  );
-  activeItem?.focus();
-}
-
-function renderList() {
-  sortDocuments();
-  elements.count.textContent = String(documents.length);
-  elements.list.replaceChildren();
-
-  const query = elements.search.value.trim().toLocaleLowerCase();
-  const visibleDocuments = documents.filter((document) => {
-    const title = (document.title || "").toLocaleLowerCase();
-    const content = contentToPlainText(document.content || "").toLocaleLowerCase();
-    return title.includes(query) || content.includes(query);
-  });
-
-  if (visibleDocuments.length === 0) {
-    const emptyMessage = document.createElement("p");
-    emptyMessage.className = "sidebar-empty";
-    emptyMessage.textContent = documents.length === 0
-      ? "Your notes will find a home here."
-      : "No documents match your search.";
-    elements.list.append(emptyMessage);
-    return;
-  }
-
-  for (const entry of visibleDocuments) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "document-item";
-    item.classList.toggle("active", entry.id === activeDocumentId);
-    item.setAttribute("aria-current", entry.id === activeDocumentId ? "page" : "false");
-    item.dataset.documentId = entry.id;
-
-    const icon = document.createElement("span");
-    icon.className = "document-item-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "✳";
-
-    const copy = document.createElement("span");
-    copy.className = "document-item-copy";
-
-    const title = document.createElement("span");
-    title.className = "document-item-title";
-    title.textContent = entry.title?.trim() || "Untitled";
-
-    const preview = document.createElement("span");
-    preview.className = "document-item-preview";
-    preview.textContent = contentToPlainText(entry.content || "").trim() || "No additional text";
-
-    copy.append(title, preview);
-    item.append(icon, copy);
-    item.addEventListener("click", () => {
-      void openDocument(entry.id);
-    });
-    elements.list.append(item);
-  }
-}
-
-function renderEditor() {
-  const activeDocument = documents.find((document) => document.id === activeDocumentId);
-  const hasDocument = Boolean(activeDocument);
-  hideBlockControls();
-  hideTableControls();
-  elements.welcome.hidden = hasDocument;
-  elements.editor.hidden = !hasDocument;
-  elements.deleteButton.disabled = !hasDocument;
-  elements.documentActions.classList.toggle("disabled", !hasDocument);
-
-  if (!activeDocument) {
-    elements.title.value = "";
-    textEditor.commands.setContent("", false);
-    updateWordCount();
-    hideFormattingToolbar();
-    elements.breadcrumb.textContent = "Welcome";
-    return;
-  }
-
-  elements.title.value = activeDocument.title || "";
-  textEditor.commands.setContent(editorContentFromStored(activeDocument.content || ""), false);
-  hideFormattingToolbar();
-  elements.breadcrumb.textContent = activeDocument.title?.trim() || "Untitled";
-  elements.date.textContent = `Last edited ${formatDate(activeDocument.updatedAt)}`;
-  updateWordCount();
-}
-
-function clampSidebarWidth(width) {
-  const maxWidth = Math.min(MAX_SIDEBAR_WIDTH, window.innerWidth - 328);
-  return Math.round(Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, width)));
-}
-
-function setSidebarWidth(width) {
-  const clampedWidth = clampSidebarWidth(width);
-  sidebarWidth = clampedWidth;
-  elements.appShell.style.setProperty("--sidebar-width", `${clampedWidth}px`);
-  elements.sidebarResizeHandle.setAttribute("aria-valuenow", String(clampedWidth));
-  return clampedWidth;
-}
-
-function saveSidebarWidth(width) {
-  try {
-    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
-  } catch (error) {
-    console.warn("Unable to save sidebar width preference:", error);
-  }
-}
-
-function endSidebarResize(event) {
-  if (event.pointerId !== sidebarResizePointerId) {
-    return;
-  }
-  sidebarResizePointerId = null;
-  elements.appShell.classList.remove("resizing-sidebar");
-  if (elements.sidebarResizeHandle.hasPointerCapture(event.pointerId)) {
-    elements.sidebarResizeHandle.releasePointerCapture(event.pointerId);
-  }
-  saveSidebarWidth(elements.sidebar.getBoundingClientRect().width);
-}
-
-try {
-  const savedSidebarWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
-  if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth > 0) {
-    setSidebarWidth(savedSidebarWidth);
-  }
-} catch (error) {
-  console.warn("Unable to load sidebar width preference:", error);
-}
-
-elements.sidebarResizeHandle.addEventListener("pointerdown", (event) => {
-  if (event.button !== 0) {
-    return;
-  }
-  sidebarResizePointerId = event.pointerId;
-  elements.sidebarResizeHandle.setPointerCapture(event.pointerId);
-  elements.appShell.classList.add("resizing-sidebar");
-  event.preventDefault();
+const accountUi = createAccountUi(elements, () => currentUser);
+const documentStorage = createDocumentStorage({
+  getCurrentUser: () => currentUser,
+  showToast,
 });
-elements.sidebarResizeHandle.addEventListener("pointermove", (event) => {
-  if (event.pointerId === sidebarResizePointerId) {
-    setSidebarWidth(event.clientX);
-  }
-});
-elements.sidebarResizeHandle.addEventListener("pointerup", endSidebarResize);
-elements.sidebarResizeHandle.addEventListener("pointercancel", endSidebarResize);
-elements.sidebarResizeHandle.addEventListener("keydown", (event) => {
-  const currentWidth = elements.sidebar.getBoundingClientRect().width;
-  const step = event.shiftKey ? 40 : 16;
-  let nextWidth;
-  if (event.key === "ArrowLeft") {
-    nextWidth = currentWidth - step;
-  } else if (event.key === "ArrowRight") {
-    nextWidth = currentWidth + step;
-  } else if (event.key === "Home") {
-    nextWidth = MIN_SIDEBAR_WIDTH;
-  } else if (event.key === "End") {
-    nextWidth = MAX_SIDEBAR_WIDTH;
-  } else {
-    return;
-  }
-  event.preventDefault();
-  saveSidebarWidth(setSidebarWidth(nextWidth));
+const sidebarController = createSidebarController(elements, (patch) => preferencesController?.update(patch));
+const themeController = createThemeController(elements.accountTheme, (patch) => preferencesController?.update(patch));
+let documentController;
+const documentUi = createDocumentUi({
+  elements,
+  getDocuments: () => documents,
+  getActiveDocumentId: () => activeDocumentId,
+  getEditorUi: () => editorUi,
+  getWorkspaceId: () => currentUser.workspaceId,
+  onDocumentsChanged: () => workspaceHome?.render(),
+  onGoHome: () => void documentController.showHome(),
+  onPreferenceChange: (patch) => preferencesController?.update(patch),
+  onEditorStateChange: () => applyFocusMode(preferencesController?.settings.focusMode || false),
+  onArchiveDocument: (id) => void documentController.archiveDocument(id),
+  onReorderDocument: async (id, direction) => {
+    if (await documentController.reorderDocument(id, direction)) preferencesController.update({ documentSort: "manual" });
+  },
+  contentToPlainText,
+  editorContentFromStored,
+  onOpenDocument: (documentId) => {
+    void documentController.openDocument(documentId);
+    sidebarController.closeMobileSidebar();
+  },
+  onRenameDocument: (documentId) => void documentController.renameDocument(documentId),
+  onDuplicateDocument: (documentId) => void documentController.duplicateDocument(documentId),
+  onToggleFavorite: (documentId) => void documentController.toggleFavorite(documentId),
+  onMoveDocument: (documentId, parentId) => void documentController.moveDocument(documentId, parentId),
+  onDeleteDocument: (documentId) => void documentController.deleteDocument(documentId),
 });
 
-function formatDate(timestamp) {
-  if (!timestamp) {
-    return "just now";
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: new Date(timestamp).getFullYear() === new Date().getFullYear() ? undefined : "numeric",
-  }).format(new Date(timestamp));
+documentController = createDocumentController({
+  elements,
+  getDocuments: () => documents,
+  setDocuments: (nextDocuments) => {
+    documents = nextDocuments;
+  },
+  getActiveDocumentId: () => activeDocumentId,
+  setActiveDocumentId: (documentId) => {
+    activeDocumentId = documentId;
+  },
+  getEditorUi: () => editorUi,
+  documentStorage,
+  documentUi,
+  setSaveStatus,
+  showToast,
+});
+
+function applyFocusMode(focused) {
+  const enabled = Boolean(focused && activeDocumentId);
+  elements.appShell.classList.toggle("focus-mode", enabled);
+  elements.focusToggle.setAttribute("aria-pressed", String(enabled));
+  elements.focusToggle.textContent = enabled ? "Exit focus" : "Focus";
 }
-
-function updateWordCount() {
-  const text = textEditor?.getText({ blockSeparator: "\n" }).trim() || "";
-  const count = text ? text.split(/\s+/u).length : 0;
-  elements.wordCount.textContent = `${count} ${count === 1 ? "word" : "words"}`;
-}
-
-function buildColorPalette(palette, colors, kind) {
-  for (const color of colors) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "palette-swatch";
-    button.dataset.color = color;
-    button.setAttribute("aria-label", `${kind} ${color}`);
-    button.title = color;
-    button.style.setProperty("--swatch-color", color);
-    palette.append(button);
-  }
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.className = "palette-clear";
-  clearButton.dataset.clear = "true";
-  clearButton.textContent = "Default";
-  palette.append(clearButton);
-}
-
-function closeFormattingPalettes() {
-  elements.textColorPalette.hidden = true;
-  elements.highlightPalette.hidden = true;
-  elements.linkEditor.hidden = true;
-  elements.toolbar.querySelectorAll("[data-palette]").forEach((button) => {
-    button.setAttribute("aria-expanded", "false");
-  });
-  elements.toolbar.querySelector('[data-format="link"]')?.setAttribute("aria-expanded", "false");
-}
-
-function hideFormattingToolbar() {
-  window.cancelAnimationFrame(toolbarPositionFrame);
-  toolbarPositionFrame = null;
-  elements.toolbar.classList.remove("visible");
-  elements.toolbar.setAttribute("aria-hidden", "true");
-  closeFormattingPalettes();
-  window.clearTimeout(toolbarHideTimer);
-  toolbarHideTimer = window.setTimeout(() => {
-    elements.toolbar.hidden = true;
-  }, 140);
-}
-
-function renderSlashOptions(query) {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  slashMatches = slashCommands.filter((command) =>
-    `${command.title} ${command.keywords}`.toLocaleLowerCase().includes(normalizedQuery),
-  );
-  slashActiveIndex = Math.min(slashActiveIndex, slashMatches.length - 1);
-  elements.slashOptions.replaceChildren();
-  elements.slashEmpty.hidden = slashMatches.length > 0;
-
-  slashMatches.forEach((command, index) => {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.id = `slash-command-option-${index}`;
-    option.className = "slash-command-option";
-    option.setAttribute("role", "option");
-    option.setAttribute("aria-selected", String(index === slashActiveIndex));
-    option.dataset.commandIndex = String(index);
-
-    const icon = document.createElement("span");
-    icon.className = "slash-command-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = command.icon;
-
-    const copy = document.createElement("span");
-    copy.className = "slash-command-copy";
-    const title = document.createElement("span");
-    title.className = "slash-command-title";
-    title.textContent = command.title;
-    const description = document.createElement("span");
-    description.className = "slash-command-description";
-    description.textContent = command.description;
-    copy.append(title, description);
-    option.append(icon, copy);
-    elements.slashOptions.append(option);
-  });
-
-  if (slashMatches.length > 0) {
-    elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
-  } else {
-    elements.content.removeAttribute("aria-activedescendant");
-  }
-}
-
-function positionSlashMenu() {
-  if (!slashRange || !textEditor) {
-    return;
-  }
-  const caret = textEditor.view.coordsAtPos(textEditor.state.selection.from);
-  const bounds = elements.slashMenu.getBoundingClientRect();
-  const padding = 12;
-  const left = Math.max(padding, Math.min(caret.left, window.innerWidth - bounds.width - padding));
-  const below = caret.bottom + 8;
-  const top = below + bounds.height <= window.innerHeight - padding
-    ? below
-    : Math.max(padding, caret.top - bounds.height - 8);
-  elements.slashMenu.style.left = `${left}px`;
-  elements.slashMenu.style.top = `${top}px`;
-}
-
-function closeSlashMenu() {
-  slashRange = null;
-  slashMatches = [];
-  slashQuery = null;
-  elements.slashMenu.hidden = true;
-  elements.content.setAttribute("aria-expanded", "false");
-  elements.content.removeAttribute("aria-activedescendant");
-}
-
-function syncSlashMenu() {
-  if (!textEditor || !textEditor.isFocused || !textEditor.state.selection.empty) {
-    closeSlashMenu();
-    return;
-  }
-  const selection = textEditor.state.selection;
-  const textBeforeCursor = selection.$from.parent.textBetween(0, selection.$from.parentOffset, "\n", "\ufffc");
-  const trigger = /(^|\s)\/([^\n]*)$/u.exec(textBeforeCursor);
-  if (!trigger) {
-    closeSlashMenu();
-    return;
-  }
-
-  slashRange = {
-    from: selection.$from.start() + trigger.index + trigger[1].length,
-    to: selection.from,
-  };
-  if (trigger[2] !== slashQuery) {
-    slashActiveIndex = 0;
-    slashQuery = trigger[2];
-  }
-  elements.slashMenu.hidden = false;
-  elements.content.setAttribute("aria-expanded", "true");
-  renderSlashOptions(trigger[2]);
-  positionSlashMenu();
-}
-
-function getTopLevelBlocks() {
-  const blocks = [];
-  textEditor.state.doc.forEach((node, pos) => {
-    blocks.push({ node, pos, dom: textEditor.view.nodeDOM(pos) });
-  });
-  return blocks;
-}
-
-function getBlockAtPosition(position) {
-  return getTopLevelBlocks().find((block) => block.pos === position) || null;
-}
-
-function getBlockFromTarget(target) {
-  if (!(target instanceof Element) || !elements.content.contains(target)) {
-    return null;
-  }
-  let blockElement = target;
-  while (blockElement.parentElement && blockElement.parentElement !== elements.content) {
-    blockElement = blockElement.parentElement;
-  }
-  return getTopLevelBlocks().find((block) => block.dom === blockElement) || null;
-}
-
-function getBlockAtSelection() {
-  const selection = textEditor.state.selection;
-  return getTopLevelBlocks()[selection.$from.index(0)] || null;
-}
-
-function blockLabel(node) {
-  const labels = {
-    blockquote: "quote",
-    bulletList: "bullet list",
-    callout: "callout",
-    codeBlock: "code block",
-    horizontalRule: "divider",
-    orderedList: "numbered list",
-    paragraph: "paragraph",
-    taskList: "to-do list",
-  };
-  if (node.type.name === "heading") {
-    return `heading ${node.attrs.level}`;
-  }
-  return labels[node.type.name] || "block";
-}
-
-function positionBlockControls() {
-  if (!currentBlock?.dom?.isConnected || elements.blockControls.hidden) {
-    return;
-  }
-  const blockBounds = currentBlock.dom.getBoundingClientRect();
-  const controlsBounds = elements.blockControls.getBoundingClientRect();
-  const left = Math.max(6, blockBounds.left - controlsBounds.width - 7);
-  const top = Math.max(
-    6,
-    Math.min(blockBounds.top, window.innerHeight - controlsBounds.height - 6),
-  );
-  elements.blockControls.style.left = `${left}px`;
-  elements.blockControls.style.top = `${top}px`;
-}
-
-function showBlockControls(block) {
-  if (!block?.dom?.isConnected || activeBlockDrag) {
-    return;
-  }
-  currentBlock = block;
-  elements.blockDragButton.setAttribute("aria-label", `Move ${blockLabel(block.node)} block`);
-  elements.blockInsertButton.setAttribute("aria-label", `Add a block after ${blockLabel(block.node)}`);
-  elements.blockControls.hidden = false;
-  elements.blockControls.classList.add("visible");
-  positionBlockControls();
-}
-
-function hideBlockControls() {
-  if (activeBlockDrag) {
-    return;
-  }
-  currentBlock = null;
-  elements.blockControls.classList.remove("visible");
-  elements.blockControls.hidden = true;
-}
-
-function announceBlockMove(block, direction) {
-  const blocks = getTopLevelBlocks();
-  const index = blocks.findIndex((entry) => entry.pos === block.pos);
-  elements.blockMoveStatus.textContent =
-    `${blockLabel(block.node)} moved ${direction}. Position ${index + 1} of ${blocks.length}.`;
-}
-
-function reorderBlock(from, targetPosition, direction = null) {
-  const state = textEditor.state;
-  const node = state.doc.nodeAt(from);
-  if (!node) {
-    return null;
-  }
-  const end = from + node.nodeSize;
-  if (targetPosition === from || targetPosition === end
-      || (targetPosition > from && targetPosition < end)) {
-    return null;
-  }
-
-  const insertionPosition = targetPosition > from ? targetPosition - node.nodeSize : targetPosition;
-  const transaction = state.tr
-    .delete(from, end)
-    .insert(insertionPosition, node);
-  textEditor.view.dispatch(transaction.scrollIntoView());
-
-  const movedBlock = getBlockAtPosition(insertionPosition);
-  if (movedBlock) {
-    showBlockControls(movedBlock);
-    if (direction) {
-      announceBlockMove(movedBlock, direction);
-    }
-  }
-  return movedBlock;
-}
-
-function moveBlockByDirection(block, direction) {
-  const blocks = getTopLevelBlocks();
-  const index = blocks.findIndex((entry) => entry.pos === block?.pos);
-  if (index < 0 || (direction < 0 && index === 0) || (direction > 0 && index === blocks.length - 1)) {
-    return false;
-  }
-  const targetPosition = direction < 0
-    ? blocks[index - 1].pos
-    : blocks[index + 1].pos + blocks[index + 1].node.nodeSize;
-  return Boolean(reorderBlock(
-    block.pos,
-    targetPosition,
-    direction < 0 ? "up" : "down",
-  ));
-}
-
-function addBlockAfterCurrent() {
-  const block = currentBlock || getBlockAtSelection();
-  if (!block) {
-    return;
-  }
-  const position = block.pos + block.node.nodeSize;
-  const inserted = textEditor.chain()
-    .focus()
-    .insertContentAt(position, {
-      type: "paragraph",
-      content: [{ type: "text", text: "/" }],
-    })
-    .setTextSelection(position + 2)
-    .run();
-  if (!inserted) {
-    showToast("Couldn't add a block here. Please try again.");
-  }
-}
-
-function dropTargetAt(clientX, clientY) {
-  const editorBounds = elements.editor.getBoundingClientRect();
-  if (clientX < editorBounds.left - 48 || clientX > editorBounds.right
-      || clientY < editorBounds.top || clientY > editorBounds.bottom) {
-    return null;
-  }
-  const blocks = getTopLevelBlocks().filter((block) => block.dom instanceof Element);
-  if (blocks.length === 0) {
-    return { position: textEditor.state.doc.content.size, top: elements.content.getBoundingClientRect().top };
-  }
-
-  for (const block of blocks) {
-    const bounds = block.dom.getBoundingClientRect();
-    if (clientY < bounds.top) {
-      return { position: block.pos, top: bounds.top };
-    }
-    if (clientY <= bounds.bottom) {
-      return clientY < bounds.top + bounds.height / 2
-        ? { position: block.pos, top: bounds.top }
-        : { position: block.pos + block.node.nodeSize, top: bounds.bottom };
-    }
-  }
-
-  const lastBlock = blocks.at(-1);
-  const lastBounds = lastBlock.dom.getBoundingClientRect();
-  return {
-    position: textEditor.state.doc.content.size,
-    top: lastBounds.bottom,
-  };
-}
-
-function updateBlockDropTarget(clientX, clientY) {
-  if (!activeBlockDrag) {
-    return;
-  }
-  const target = dropTargetAt(clientX, clientY);
-  if (!target || target.position === activeBlockDrag.from
-      || target.position === activeBlockDrag.from + activeBlockDrag.nodeSize) {
-    blockDropPosition = null;
-    elements.blockDropIndicator.hidden = true;
-    return;
-  }
-
-  blockDropPosition = target.position;
-  const contentBounds = elements.content.getBoundingClientRect();
-  elements.blockDropIndicator.style.left = `${contentBounds.left}px`;
-  elements.blockDropIndicator.style.top = `${target.top}px`;
-  elements.blockDropIndicator.style.width = `${contentBounds.width}px`;
-  elements.blockDropIndicator.hidden = false;
-}
-
-function beginBlockDrag(block, dataTransfer) {
-  if (!block) {
-    return;
-  }
-  activeBlockDrag = { from: block.pos, nodeSize: block.node.nodeSize };
-  elements.blockControls.classList.add("is-dragging");
-  if (dataTransfer) {
-    dataTransfer.effectAllowed = "move";
-    dataTransfer.setData("text/plain", blockLabel(block.node));
-  }
-}
-
-function finishBlockDrag(shouldMove) {
-  let movedBlock = null;
-  if (shouldMove && activeBlockDrag && blockDropPosition !== null) {
-    movedBlock = reorderBlock(activeBlockDrag.from, blockDropPosition);
-  }
-  activeBlockDrag = null;
-  blockDropPosition = null;
-  elements.blockControls.classList.remove("is-dragging");
-  elements.blockDropIndicator.hidden = true;
-  if (movedBlock) {
-    showBlockControls(movedBlock);
-  } else if (!elements.blockControls.hidden) {
-    positionBlockControls();
-  }
-}
-
-function startTouchBlockDrag(event) {
-  if (!touchBlockDrag || activeBlockDrag) {
-    return;
-  }
-  const distance = Math.hypot(
-    event.clientX - touchBlockDrag.startX,
-    event.clientY - touchBlockDrag.startY,
-  );
-  if (distance < 7) {
-    return;
-  }
-  beginBlockDrag(touchBlockDrag.block);
-}
-
-function getTableContextAtPosition(position) {
-  let context = null;
-  textEditor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "table" || pos !== position) {
-      return;
-    }
-    const nodeDom = textEditor.view.nodeDOM(pos);
-    const table = nodeDom instanceof Element
-      ? (nodeDom.matches("table") ? nodeDom : nodeDom.querySelector("table"))
-      : null;
-    if (table) {
-      context = {
-        node,
-        pos,
-        table,
-        wrapper: table.closest(".tableWrapper") || table,
-      };
-    }
-    return false;
-  });
-  return context;
-}
-
-function getTableContextFromTarget(target) {
-  if (!(target instanceof Element)) {
-    return null;
-  }
-  const table = target.closest("table");
-  if (!table) {
-    return null;
-  }
-  let context = null;
-  textEditor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "table") {
-      return;
-    }
-    const nodeDom = textEditor.view.nodeDOM(pos);
-    if (nodeDom instanceof Element && (nodeDom === table || nodeDom.contains(table))) {
-      context = {
-        node,
-        pos,
-        table,
-        wrapper: table.closest(".tableWrapper") || table,
-      };
-      return false;
-    }
-  });
-  return context;
-}
-
-function getTableContextFromSelection() {
-  const selection = textEditor.state.selection;
-  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
-    if (selection.$from.node(depth).type.name === "table") {
-      return getTableContextAtPosition(selection.$from.before(depth));
-    }
-  }
-  return null;
-}
-
-function closeTableActionsMenu(returnFocus = false) {
-  elements.tableActionsMenu.hidden = true;
-  elements.tableActionsTrigger.setAttribute("aria-expanded", "false");
-  if (returnFocus) {
-    elements.tableActionsTrigger.focus();
-  }
-}
-
-function hideTableControls() {
-  activeTable = null;
-  closeTableActionsMenu();
-  elements.tableControls.classList.remove("visible");
-  elements.tableControls.hidden = true;
-  elements.tableAddRow.hidden = true;
-  elements.tableAddColumn.hidden = true;
-}
-
-function positionTableControls() {
-  if (!activeTable?.wrapper?.isConnected || elements.tableControls.hidden) {
-    return;
-  }
-  const bounds = activeTable.wrapper.getBoundingClientRect();
-  const triggerBounds = elements.tableControls.getBoundingClientRect();
-  const padding = 6;
-  const left = Math.max(
-    padding,
-    Math.min(bounds.right - triggerBounds.width, window.innerWidth - triggerBounds.width - padding),
-  );
-  const above = bounds.top - triggerBounds.height - 5;
-  elements.tableControls.style.left = `${left}px`;
-  elements.tableControls.style.top = `${above >= padding ? above : Math.min(bounds.top + 5, window.innerHeight - triggerBounds.height - padding)}px`;
-
-  const rowBounds = elements.tableAddRow.getBoundingClientRect();
-  const rowLeft = Math.max(
-    padding,
-    Math.min(bounds.left + (bounds.width - rowBounds.width) / 2, window.innerWidth - rowBounds.width - padding),
-  );
-  elements.tableAddRow.style.left = `${rowLeft}px`;
-  elements.tableAddRow.style.top = `${Math.max(padding, Math.min(bounds.bottom - rowBounds.height / 2, window.innerHeight - rowBounds.height - padding))}px`;
-
-  const columnBounds = elements.tableAddColumn.getBoundingClientRect();
-  elements.tableAddColumn.style.left = `${Math.max(padding, Math.min(bounds.right - columnBounds.width / 2, window.innerWidth - columnBounds.width - padding))}px`;
-  elements.tableAddColumn.style.top = `${Math.max(padding, Math.min(bounds.top + (bounds.height - columnBounds.height) / 2, window.innerHeight - columnBounds.height - padding))}px`;
-  if (!elements.tableActionsMenu.hidden) {
-    positionTableMenu();
-  }
-}
-
-function positionTableMenu() {
-  const controlBounds = elements.tableControls.getBoundingClientRect();
-  const menuBounds = elements.tableActionsMenu.getBoundingClientRect();
-  const padding = 8;
-  const left = Math.max(
-    padding,
-    Math.min(controlBounds.right - menuBounds.width, window.innerWidth - menuBounds.width - padding),
-  );
-  const below = controlBounds.bottom + 5;
-  const top = below + menuBounds.height <= window.innerHeight - padding
-    ? below
-    : Math.max(padding, controlBounds.top - menuBounds.height - 5);
-  elements.tableActionsMenu.style.left = `${left}px`;
-  elements.tableActionsMenu.style.top = `${top}px`;
-}
-
-function showTableControls(context) {
-  if (!context?.wrapper?.isConnected) {
-    hideTableControls();
-    return;
-  }
-  if (activeTable?.pos !== context.pos) {
-    closeTableActionsMenu();
-  }
-  activeTable = context;
-  elements.tableControls.hidden = false;
-  elements.tableAddRow.hidden = false;
-  elements.tableAddColumn.hidden = false;
-  elements.tableControls.classList.add("visible");
-  positionTableControls();
-}
-
-function addParagraphAfterTable() {
-  if (!activeTable) {
-    return;
-  }
-  const position = activeTable.pos + activeTable.node.nodeSize;
-  const inserted = textEditor.chain()
-    .focus()
-    .insertContentAt(position, { type: "paragraph" })
-    .setTextSelection(position + 1)
-    .run();
-  if (!inserted) {
-    showToast("Couldn't add a paragraph after this table.");
-  }
-}
-
-function runTableAction(action) {
-  if (!activeTable) {
-    return;
-  }
-  closeTableActionsMenu();
-  if (action === "addParagraphAfterTable") {
-    addParagraphAfterTable();
-    return;
-  }
-
-  const command = {
-    addRowBefore: "addRowBefore",
-    addRowAfter: "addRowAfter",
-    deleteRow: "deleteRow",
-    addColumnBefore: "addColumnBefore",
-    addColumnAfter: "addColumnAfter",
-    deleteColumn: "deleteColumn",
-    toggleHeaderRow: "toggleHeaderRow",
-    deleteTable: "deleteTable",
-  }[action];
-  if (!command) {
-    return;
-  }
-  const changed = textEditor.chain().focus()[command]().run();
-  if (!changed) {
-    showToast("Couldn't update the table. Select a cell and try again.");
-  }
-  if (action === "deleteTable") {
-    hideTableControls();
-  }
-}
-
-function moveSlashSelection(offset) {
-  if (slashMatches.length === 0) {
-    return;
-  }
-  slashActiveIndex = (slashActiveIndex + offset + slashMatches.length) % slashMatches.length;
-  elements.slashOptions.querySelectorAll(".slash-command-option").forEach((option, index) => {
-    option.setAttribute("aria-selected", String(index === slashActiveIndex));
-  });
-  elements.content.setAttribute("aria-activedescendant", `slash-command-option-${slashActiveIndex}`);
-  elements.slashOptions.children[slashActiveIndex].scrollIntoView({ block: "nearest" });
-}
-
-function runSlashCommand(index) {
-  const command = slashMatches[index];
-  if (!command || !slashRange) {
-    return;
-  }
-  const range = slashRange;
-  closeSlashMenu();
-  const chain = textEditor.chain().focus().deleteRange(range);
-  if (!command.command(chain).run()) {
-    showToast(`Couldn't insert ${command.title.toLocaleLowerCase()} here.`);
-  }
-}
-
-function positionFormattingToolbar() {
-  if (!textEditor || textEditor.state.selection.empty) {
-    hideFormattingToolbar();
-    return;
-  }
-  const { from, to } = textEditor.state.selection;
-  const start = textEditor.view.coordsAtPos(from);
-  const end = textEditor.view.coordsAtPos(to);
-  const toolbarBounds = elements.toolbar.getBoundingClientRect();
-  const padding = 12;
-  const left = Math.min(
-    Math.max((start.left + end.right) / 2 - toolbarBounds.width / 2, padding),
-    window.innerWidth - toolbarBounds.width - padding,
-  );
-  const top = Math.min(start.top, end.top) - toolbarBounds.height - 10;
-  elements.toolbar.style.left = `${left}px`;
-  elements.toolbar.style.top = `${top >= padding ? top : Math.max(start.bottom, end.bottom) + 10}px`;
-}
-
-function updateFormattingToolbar() {
-  if (!textEditor || textEditor.state.selection.empty || !textEditor.isFocused) {
-    hideFormattingToolbar();
-    return;
-  }
-
-  window.clearTimeout(toolbarHideTimer);
-  elements.toolbar.hidden = false;
-  elements.toolbar.setAttribute("aria-hidden", "false");
-  positionFormattingToolbar();
-  window.requestAnimationFrame(() => elements.toolbar.classList.add("visible"));
-  elements.toolbar.querySelectorAll("[data-format]").forEach((button) => {
-    const format = button.dataset.format;
-    const active = format === "link"
-      ? textEditor.isActive("link")
-      : format === "color"
-        ? Boolean(textEditor.getAttributes("textStyle").color)
-        : format === "highlight"
-          ? textEditor.isActive("highlight")
-          : textEditor.isActive(format);
-    button.setAttribute("aria-pressed", String(active));
-  });
-  elements.toolbar.querySelectorAll("[data-heading]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(
-      textEditor.isActive("heading", { level: Number(button.dataset.heading) }),
-    ));
-  });
-  elements.toolbar.querySelector('[data-palette="text"]').setAttribute(
-    "aria-pressed",
-    String(Boolean(textEditor.getAttributes("textStyle").color)),
-  );
-  elements.toolbar.querySelector('[data-palette="highlight"]').setAttribute(
-    "aria-pressed",
-    String(textEditor.isActive("highlight")),
-  );
-}
-
-function editLink() {
-  if (elements.toolbar.hidden) {
-    updateFormattingToolbar();
-  }
-  closeFormattingPalettes();
-  elements.linkInput.value = textEditor.getAttributes("link").href || "";
-  elements.linkEditor.hidden = false;
-  elements.toolbar.querySelector('[data-format="link"]').setAttribute("aria-expanded", "true");
-  elements.linkInput.focus();
-}
-
-function applyLink(href) {
-  const chain = textEditor.chain().focus().extendMarkRange("link");
-  if (href.trim()) {
-    chain.setLink({ href: href.trim() }).run();
-  } else {
-    chain.unsetLink().run();
-  }
-  elements.linkEditor.hidden = true;
-  elements.toolbar.querySelector('[data-format="link"]').setAttribute("aria-expanded", "false");
-  updateFormattingToolbar();
-}
-
-function applyToolbarAction(button) {
-  if (button.dataset.heading) {
-    textEditor.chain().focus()
-      .toggleHeading({ level: Number(button.dataset.heading) })
-      .run();
-    return;
-  }
-
-  const command = {
-    bold: "toggleBold",
-    italic: "toggleItalic",
-    underline: "toggleUnderline",
-    strike: "toggleStrike",
-    code: "toggleCode",
-  }[button.dataset.format];
-  if (command) {
-    textEditor.chain().focus()[command]().run();
-  } else if (button.dataset.format === "link") {
-    editLink();
-  }
-}
-
-function bindFormattingToolbar() {
-  buildColorPalette(
-    elements.textColorPalette,
-    ["#37352f", "#9b9a97", "#d44c47", "#d9730d", "#cb912f", "#448361", "#337ea9", "#9065b0"],
-    "Text color",
-  );
-  buildColorPalette(
-    elements.highlightPalette,
-    ["#fef3c7", "#fde2e2", "#e4f2e7", "#e2efff", "#eee5f8", "#f0efed"],
-    "Highlight",
-  );
-
-  elements.toolbar.addEventListener("mousedown", (event) => {
-    if (!event.target.closest("input")) {
-      event.preventDefault();
-    }
-  });
-  elements.toolbar.addEventListener("click", (event) => {
-    const paletteButton = event.target.closest("[data-palette]");
-    if (paletteButton) {
-      const palette = paletteButton.dataset.palette === "text"
-        ? elements.textColorPalette
-        : elements.highlightPalette;
-      const wasOpen = !palette.hidden;
-      closeFormattingPalettes();
-      palette.hidden = wasOpen;
-      paletteButton.setAttribute("aria-expanded", String(!wasOpen));
-      return;
-    }
-
-    const swatch = event.target.closest(".palette-swatch, .palette-clear");
-    if (swatch) {
-      const palette = swatch.closest(".toolbar-palette");
-      if (palette === elements.textColorPalette) {
-        const chain = textEditor.chain().focus();
-        (swatch.dataset.clear ? chain.unsetColor() : chain.setColor(swatch.dataset.color)).run();
-      } else {
-        const chain = textEditor.chain().focus();
-        (swatch.dataset.clear ? chain.unsetHighlight() : chain.setHighlight({ color: swatch.dataset.color })).run();
-      }
-      closeFormattingPalettes();
-      updateFormattingToolbar();
-      return;
-    }
-
-    const button = event.target.closest("[data-format], [data-heading]");
-    if (button) {
-      applyToolbarAction(button);
-    }
-  });
-  elements.linkEditor.addEventListener("submit", (event) => {
-    event.preventDefault();
-    applyLink(elements.linkInput.value);
-  });
-  elements.linkEditor.querySelector("[data-action='remove-link']").addEventListener("click", () => {
-    applyLink("");
-  });
-}
-
-function scheduleSave() {
-  const activeDocument = documents.find((document) => document.id === activeDocumentId);
-  if (!activeDocument) {
-    return;
-  }
-
-  activeDocument.title = elements.title.value;
-  activeDocument.content = textEditor.getHTML();
-  activeDocument.updatedAt = Date.now();
-  saveLocalDraft(activeDocument);
-  if (elements.sidebar.classList.contains("sidebar-showing-document")) {
-    showSidebarDocument(activeDocument);
-  }
-  elements.breadcrumb.textContent = activeDocument.title.trim() || "Untitled";
-  elements.date.textContent = `Last edited ${formatDate(activeDocument.updatedAt)}`;
-  renderList();
-  setSaveStatus("saving", "Saving changes...");
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    void saveDocument(activeDocument.id);
-  }, SAVE_DELAY);
-}
-
-async function saveDocument(documentId) {
-  window.clearTimeout(saveTimer);
-  const current = documents.find((document) => document.id === documentId);
-  if (!current) {
-    return true;
-  }
-
-  const snapshot = { title: current.title, content: current.content };
-  const operation = saveQueue.then(async () => {
-    const savedDocument = await request(`${API_URL}/${encodeURIComponent(documentId)}`, {
-      method: "PUT",
-      body: JSON.stringify(snapshot),
-    });
-    const index = documents.findIndex((document) => document.id === documentId);
-    if (index !== -1) {
-      const latest = documents[index];
-      const hasNewerEdits = latest.title !== snapshot.title || latest.content !== snapshot.content;
-      documents[index] = hasNewerEdits
-        ? { ...savedDocument, title: latest.title, content: latest.content, updatedAt: latest.updatedAt }
-        : savedDocument;
-      if (hasNewerEdits) {
-        setSaveStatus("saving", "Saving changes...");
-      }
-    }
-    renderList();
-    if (activeDocumentId === documentId) {
-      elements.date.textContent = `Last edited ${formatDate(savedDocument.updatedAt)}`;
-      if (index === -1 || (documents[index].title === snapshot.title && documents[index].content === snapshot.content)) {
-        setSaveStatus("saved", "All changes saved");
-      }
-    }
-    return true;
-  });
-  saveQueue = operation.catch(() => {});
-
-  try {
-    return await operation;
-  } catch (error) {
-    if (activeDocumentId === documentId) {
-      setSaveStatus("error", "Couldn't save changes");
-    }
-    showToast("Your changes couldn't be saved. Please try again.");
-    console.error("Unable to save document:", error);
-    return Boolean(loadLocalDraft(documentId));
-  }
-}
-
-async function flushSave() {
-  window.clearTimeout(saveTimer);
-  if (!activeDocumentId) {
-    return true;
-  }
-  return saveDocument(activeDocumentId);
-}
-
-async function openDocument(documentId) {
-  const requestId = ++documentOpenRequest;
-  if (!(await flushSave())) {
-    return;
-  }
-  let selectedDocument = documents.find((entry) => entry.id === documentId);
-  if (!selectedDocument) {
-    showToast("Couldn't find that document. Please refresh and try again.");
-    return;
-  }
-
-  try {
-    const fetchedDocument = await request(`${API_URL}/${encodeURIComponent(documentId)}`);
-    if (requestId !== documentOpenRequest) {
-      return;
-    }
-    const localDraft = loadLocalDraft(documentId);
-    selectedDocument = localDraft && localDraft.updatedAt >= fetchedDocument.updatedAt
-      ? { ...fetchedDocument, title: localDraft.title, content: localDraft.content, updatedAt: localDraft.updatedAt }
-      : fetchedDocument;
-    const index = documents.findIndex((entry) => entry.id === documentId);
-    if (index !== -1) {
-      documents[index] = selectedDocument;
-    }
-    if (selectedDocument !== fetchedDocument) {
-      void saveDocument(documentId);
-    }
-  } catch (error) {
-    console.error("Unable to fetch document:", error);
-    showToast("Couldn't refresh this document. Showing its last loaded version.");
-  }
-
-  if (requestId !== documentOpenRequest) {
-    return;
-  }
-  activeDocumentId = selectedDocument.id;
-  renderEditor();
-  renderList();
-  showSidebarDocument(selectedDocument);
-  setSaveStatus("saved", "All changes saved");
-}
-
-elements.sidebarBack.addEventListener("click", showDocumentList);
-
-async function createDocument() {
-  if (!(await flushSave())) {
-    return;
-  }
-  try {
-    const createdDocument = await request(API_URL, { method: "POST" });
-    documents.unshift(createdDocument);
-    activeDocumentId = createdDocument.id;
-    elements.search.value = "";
-    renderEditor();
-    renderList();
-    showSidebarDocument(createdDocument);
-    elements.title.focus();
-    elements.title.select();
-    setSaveStatus("saved", "All changes saved");
-  } catch (error) {
-    showToast("Couldn't create a document. Please try again.");
-    console.error("Unable to create document:", error);
-  }
-}
-
-async function deleteDocument() {
-  const documentId = activeDocumentId;
-  if (!documentId || !(await flushSave())) {
-    return;
-  }
-  if (!window.confirm("Delete this document? This can't be undone.")) {
-    return;
-  }
-
-  try {
-    await request(`${API_URL}/${encodeURIComponent(documentId)}`, { method: "DELETE" });
-    removeLocalDraft(documentId);
-    documents = documents.filter((document) => document.id !== documentId);
-    activeDocumentId = documents[0]?.id ?? null;
-    renderEditor();
-    renderList();
-    showDocumentList();
-    setSaveStatus("saved", "All changes saved");
-  } catch (error) {
-    showToast("Couldn't delete this document. Please try again.");
-    console.error("Unable to delete document:", error);
-  }
-}
-
-async function exportDocument(format) {
-  if (!activeDocumentId || !(await flushSave())) {
-    return;
-  }
-  if (elements.saveStatus.classList.contains("error")) {
-    showToast("Save your document before exporting it.");
-    return;
-  }
-
-  try {
-    const response = await fetch(`${API_URL}/${encodeURIComponent(activeDocumentId)}/export/${format}`);
-    if (!response.ok) {
-      throw new Error(`Export failed (${response.status})`);
-    }
-    const file = await response.blob();
-    const downloadUrl = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    const disposition = response.headers.get("Content-Disposition") || "";
-    const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/u)?.[1];
-    link.href = downloadUrl;
-    link.download = encodedFilename
-      ? decodeURIComponent(encodedFilename)
-      : `${elements.title.value.trim() || "document"}.${format}`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-    elements.documentActions.open = false;
-  } catch (error) {
-    showToast("Couldn't export this document. Please try again.");
-    console.error("Unable to export document:", error);
-  }
-}
-
-async function shareWithWhatsApp() {
-  if (!activeDocumentId) {
-    return;
-  }
-  const shareWindow = window.open("about:blank", "_blank");
-  if (!shareWindow) {
-    showToast("Allow pop-ups to open WhatsApp sharing.");
-    return;
-  }
-  shareWindow.opener = null;
-
-  try {
-    if (!(await flushSave()) || elements.saveStatus.classList.contains("error")) {
-      shareWindow.close();
-      showToast("Save your document before sharing it.");
-      return;
-    }
-    const response = await request(`${API_URL}/${encodeURIComponent(activeDocumentId)}/share/whatsapp`);
-    shareWindow.location.href = response.shareUrl;
-    elements.documentActions.open = false;
-  } catch (error) {
-    shareWindow.close();
-    showToast("Couldn't prepare the WhatsApp share. Please try again.");
-    console.error("Unable to create WhatsApp share link:", error);
-  }
-}
-
-async function loadWorkspaceDocuments(preferredDocumentId = activeDocumentId) {
-  try {
-    documents = await request(API_URL);
-  } catch (error) {
-    documents = loadLocalDraftDocuments();
-    sortDocuments();
-    activeDocumentId = documents.find((entry) => entry.id === preferredDocumentId)?.id ?? documents[0]?.id ?? null;
-    renderEditor();
-    renderList();
-    if (elements.sidebar.classList.contains("sidebar-showing-document")) {
-      const activeDocument = documents.find((entry) => entry.id === activeDocumentId);
-      if (activeDocument) {
-        showSidebarDocument(activeDocument);
-      } else {
-        showDocumentList();
-      }
-    }
-    if (documents.length > 0) {
-      setSaveStatus("error", "Showing local copies");
-      showToast("The server is unavailable. Showing saved browser copies.");
-      console.error("Unable to load documents from the server:", error);
-      return;
-    }
-    setSaveStatus("error", "Couldn't load documents");
-    showToast("Your documents couldn't be loaded. Refresh to try again.");
-    console.error("Unable to load documents:", error);
-    return;
-  }
-
-  const restoredDocumentIds = [];
-  for (const entry of documents) {
-    const draft = loadLocalDraft(entry.id);
-    if (
-      draft
-      && draft.updatedAt >= entry.updatedAt
-      && (draft.title !== entry.title || draft.content !== entry.content)
-    ) {
-      entry.title = draft.title;
-      entry.content = draft.content;
-      entry.updatedAt = draft.updatedAt;
-      restoredDocumentIds.push(entry.id);
-    }
-  }
-  sortDocuments();
-  activeDocumentId = documents.find((entry) => entry.id === preferredDocumentId)?.id ?? documents[0]?.id ?? null;
-  renderEditor();
-  renderList();
-  if (elements.sidebar.classList.contains("sidebar-showing-document")) {
-    const activeDocument = documents.find((entry) => entry.id === activeDocumentId);
-    if (activeDocument) {
-      showSidebarDocument(activeDocument);
-    } else {
-      showDocumentList();
-    }
-  }
-  for (const documentId of restoredDocumentIds) {
-    void saveDocument(documentId);
-  }
-  setSaveStatus("saved", "All changes saved");
-}
-
-async function refreshAccountWorkspace(previousWorkspaceId, preferredDocumentId) {
-  const session = await request("/api/auth/session");
-  rekeyLocalDrafts(previousWorkspaceId, session.workspaceId);
-  currentUser = session;
-  elements.search.value = "";
-  updateAccountMenu();
-  await loadWorkspaceDocuments(preferredDocumentId);
-}
-
-async function authenticateAccount(email, password) {
-  const previousWorkspaceId = currentUser.workspaceId;
-  const preferredDocumentId = activeDocumentId;
-  if (!(await flushSave())) {
-    return;
-  }
-  await request("/api/auth/login", {
-    method: "POST",
-    body: new URLSearchParams({ email, password }),
-  });
-  await refreshAccountWorkspace(previousWorkspaceId, preferredDocumentId);
-  elements.accountDialog.close();
-  closeAccountMenu();
-  showToast("You’re logged in. Your notes are ready.");
-}
-
-async function logoutAccount() {
-  if (!(await flushSave())) {
-    return;
-  }
-  await request("/api/auth/logout", { method: "POST" });
-  const guestSession = await request("/api/auth/session");
-  currentUser = guestSession;
-  elements.search.value = "";
-  updateAccountMenu();
-  await loadWorkspaceDocuments(null);
-  closeAccountMenu();
-  showToast("You’re now using Squareone as a guest.");
-}
-
-async function submitAccountForm(event) {
+preferencesController = createPreferencesController({
+  request: documentStorage.request, getCurrentUser: () => currentUser, showToast,
+  apply: (settings) => {
+    themeController.setMode(settings.theme);
+    sidebarController.applyPreferences(settings);
+    elements.appShell.classList.toggle("wide-page", settings.widePage);
+    elements.widePageToggle.setAttribute("aria-pressed", String(settings.widePage));
+    applyFocusMode(settings.focusMode);
+    const fonts = { sans: "var(--sans)", serif: "var(--serif)", mono: "ui-monospace, monospace" };
+    elements.appShell.style.setProperty("--editor-font-family", fonts[settings.fontFamily] || fonts.sans);
+    elements.appShell.style.setProperty("--editor-font-size", `${settings.fontSize}px`);
+    elements.appShell.style.setProperty("--editor-line-height", String(settings.lineHeight));
+    document.querySelector("#preference-font").value = settings.fontFamily;
+    document.querySelector("#preference-font-size").value = settings.fontSize;
+    document.querySelector("#preference-line-height").value = settings.lineHeight;
+    documentUi.applyPreferences(settings);
+  },
+});
+document.querySelector("#writing-preferences-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  elements.accountFormError.hidden = true;
-  try {
-    if (accountDialogMode === "login") {
-      await authenticateAccount(elements.accountEmailInput.value.trim(), elements.accountPasswordInput.value);
-    } else if (accountDialogMode === "signup") {
-      if (!(await flushSave())) {
-        return;
-      }
-      const email = elements.accountEmailInput.value.trim();
-      const password = elements.accountPasswordInput.value;
-      await request("/api/auth/signup", {
-        method: "POST",
-        body: JSON.stringify({
-          name: elements.accountNameInput.value.trim(),
-          email,
-          password,
-        }),
-      });
-      await authenticateAccount(email, password);
-    } else if (accountDialogMode === "profile") {
-      const profile = await request("/api/auth/profile", {
-        method: "PUT",
-        body: JSON.stringify({
-          name: elements.accountNameInput.value.trim(),
-          email: elements.accountEmailInput.value.trim(),
-          avatarColor: elements.accountAvatarColorInput.value,
-        }),
-      });
-      currentUser = profile;
-      updateAccountMenu();
-      elements.accountDialog.close();
-      showToast("Your profile was updated.");
-    } else if (accountDialogMode === "settings") {
-      await request("/api/auth/password", {
-        method: "PUT",
-        body: JSON.stringify({
-          currentPassword: elements.accountCurrentPasswordInput.value,
-          newPassword: elements.accountNewPasswordInput.value,
-        }),
-      });
-      elements.accountDialog.close();
-      showToast("Your password was updated.");
-    }
-  } catch (error) {
-    showAccountFormError(error.message || "That didn’t work. Please try again.");
-  }
-}
+  preferencesController.update({
+    fontFamily: document.querySelector("#preference-font").value,
+    fontSize: Number(document.querySelector("#preference-font-size").value),
+    lineHeight: Number(document.querySelector("#preference-line-height").value),
+  });
+});
 
-async function initialize() {
-  try {
-    currentUser = await request("/api/auth/session");
-    updateAccountMenu();
-  } catch (error) {
-    setSaveStatus("error", "Couldn't connect");
-    showToast("Squareone couldn’t connect. Refresh to try again.");
-    console.error("Unable to load the guest or account session:", error);
-    return;
-  }
-  await loadWorkspaceDocuments(null);
-}
+const accountController = createAccountController({
+  preferencesController,
+  elements,
+  accountUi,
+  documentStorage,
+  documentController,
+  getCurrentUser: () => currentUser,
+  setCurrentUser: (user) => {
+    currentUser = user;
+  },
+  getActiveDocumentId: () => activeDocumentId,
+  setSaveStatus,
+  showToast,
+});
 
-elements.newButton.addEventListener("click", () => void createDocument());
-elements.welcomeCreate.addEventListener("click", () => void createDocument());
-elements.deleteButton.addEventListener("click", () => void deleteDocument());
+workspaceHome = createWorkspaceHome({
+  getDocuments: () => documents,
+  contentToPlainText,
+  onOpenDocument: (id) => void documentController.openDocument(id),
+});
+document.querySelector("#workspace-home").addEventListener("click", () => {
+  void documentController.showHome();
+  sidebarController.closeMobileSidebar();
+});
+
+const trashController = createTrashController({
+  request: documentStorage.request,
+  showToast,
+  onRestore: (entry) => {
+    if (!documents.some((document) => document.id === entry.id)) documents.push(entry);
+    documentUi.renderList();
+  },
+});
+const archiveController = createArchiveController({
+  request: documentStorage.request,
+  onRestore: documentController.applyServerDocument,
+  showToast,
+});
+document.querySelector("#open-archive").addEventListener("click", () => {
+  sidebarController.closeMobileSidebar(false);
+  archiveController.open();
+});
+const documentDetails = createDocumentDetails({
+  request: documentStorage.request,
+  getActiveDocument: () => documents.find((entry) => entry.id === activeDocumentId),
+  syncPendingChanges: documentController.syncPendingChanges,
+  onUpdate: documentController.applyServerDocument,
+  showToast,
+});
+document.querySelector("#open-history").addEventListener("click", () => {
+  elements.documentActions.open = false;
+  void documentDetails.openHistory();
+});
+document.querySelector("#open-document-details").addEventListener("click", () => {
+  elements.documentActions.open = false;
+  void documentDetails.openDetails();
+});
+document.querySelector("#open-trash").addEventListener("click", () => {
+  sidebarController.closeMobileSidebar(false);
+  trashController.open();
+});
+
+elements.newButton.addEventListener("click", () => {
+  sidebarController.closeMobileSidebar(false);
+  void documentController.createDocument();
+});
+elements.welcomeCreate.addEventListener("click", () => void documentController.createDocument());
+elements.deleteButton.addEventListener("click", () => void documentController.deleteDocument());
+document.querySelector("#retry-sync").addEventListener("click", () => {
+  if (documentController.hasConflicts()) void documentController.resolveConflicts();
+  else void documentController.syncPendingChanges();
+});
 elements.documentActions.querySelectorAll("[data-export-format]").forEach((button) => {
-  button.addEventListener("click", () => void exportDocument(button.dataset.exportFormat));
+  button.addEventListener("click", () => void documentController.exportDocument(button.dataset.exportFormat));
 });
-elements.whatsappButton.addEventListener("click", () => void shareWithWhatsApp());
+elements.whatsappButton.addEventListener("click", () => void documentController.shareWithWhatsApp());
+elements.searchToggle.addEventListener("click", () => {
+  sidebarController.focusSearch();
+});
+elements.widePageToggle.addEventListener("click", () => {
+  const isWide = elements.appShell.classList.toggle("wide-page");
+  elements.widePageToggle.setAttribute("aria-pressed", String(isWide));
+  preferencesController.update({ widePage: isWide });
+});
+elements.focusToggle.addEventListener("click", () => {
+  const isFocused = elements.appShell.classList.toggle("focus-mode");
+  elements.focusToggle.setAttribute("aria-pressed", String(isFocused));
+  elements.focusToggle.textContent = isFocused ? "Exit focus" : "Focus";
+  preferencesController.update({ focusMode: isFocused });
+});
+elements.accountTheme.addEventListener("click", () => themeController.cycleTheme());
+
 elements.accountMenuTrigger.addEventListener("click", () => {
   const isExpanded = elements.accountMenuTrigger.getAttribute("aria-expanded") === "true";
   elements.accountMenuPanel.hidden = isExpanded;
   elements.accountMenuTrigger.setAttribute("aria-expanded", String(!isExpanded));
+  if (!isExpanded) {
+    elements.accountMenuPanel.querySelector('[role="menuitem"]:not([hidden])')?.focus();
+  }
+});
+elements.accountMenuPanel.addEventListener("keydown", (event) => {
+  const items = Array.from(elements.accountMenuPanel.querySelectorAll('[role="menuitem"]:not([hidden]):not(:disabled)'));
+  if (items.length === 0) {
+    return;
+  }
+  const currentIndex = items.indexOf(document.activeElement);
+  let nextIndex;
+  if (event.key === "ArrowDown") {
+    nextIndex = (currentIndex + 1 + items.length) % items.length;
+  } else if (event.key === "ArrowUp") {
+    nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = items.length - 1;
+  } else {
+    return;
+  }
+  event.preventDefault();
+  items[nextIndex].focus();
 });
 elements.accountProfile.addEventListener("click", () => {
-  closeAccountMenu();
-  showAccountDialog("profile");
+  sidebarController.closeMobileSidebar(false);
+  accountUi.closeMenu();
+  accountUi.showDialog("profile");
 });
 elements.accountSettings.addEventListener("click", () => {
-  closeAccountMenu();
-  showAccountDialog("settings");
+  sidebarController.closeMobileSidebar(false);
+  accountUi.closeMenu();
+  accountUi.showDialog("settings");
 });
 elements.accountLogin.addEventListener("click", () => {
-  closeAccountMenu();
-  showAccountDialog("login");
+  sidebarController.closeMobileSidebar(false);
+  accountUi.closeMenu();
+  accountUi.showDialog("login");
+});
+document.querySelector("#guest-signup").addEventListener("click", () => {
+  sidebarController.closeMobileSidebar(false);
+  accountUi.showDialog("signup");
+});
+document.querySelector("#guest-login").addEventListener("click", () => {
+  sidebarController.closeMobileSidebar(false);
+  accountUi.showDialog("login");
 });
 elements.accountLogout.addEventListener("click", () => {
-  void logoutAccount().catch((error) => {
+  sidebarController.closeMobileSidebar(false);
+  void accountController.logoutAccount().catch((error) => {
     showToast(error.message || "Couldn’t log out. Please try again.");
     console.error("Unable to log out:", error);
   });
@@ -2015,370 +377,122 @@ elements.accountGuestContinue.addEventListener("click", () => elements.accountDi
 elements.accountModeToggle.addEventListener("click", () => {
   const name = elements.accountNameInput.value;
   const email = elements.accountEmailInput.value;
-  showAccountDialog(accountDialogMode === "login" ? "signup" : "login");
+  accountUi.showDialog(accountUi.mode === "login" ? "signup" : "login");
   elements.accountNameInput.value = name;
   elements.accountEmailInput.value = email;
 });
-elements.accountForm.addEventListener("submit", (event) => void submitAccountForm(event));
-document.addEventListener("pointerdown", (event) => {
-  if (!elements.tableControls.contains(event.target) && !elements.tableActionsMenu.hidden) {
-    closeTableActionsMenu();
-  }
+elements.accountForm.addEventListener("submit", (event) => {
+  void accountController.submitAccountForm(event);
 });
 document.addEventListener("click", (event) => {
   if (!elements.accountMenu.contains(event.target)) {
-    closeAccountMenu();
+    accountUi.closeMenu();
   }
 });
-elements.search.addEventListener("input", renderList);
-elements.title.addEventListener("input", scheduleSave);
-bindFormattingToolbar();
-elements.slashMenu.addEventListener("mousedown", (event) => {
-  if (event.target.closest(".slash-command-option")) {
+
+elements.search.addEventListener("input", documentUi.renderList);
+elements.search.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
     event.preventDefault();
-  }
-});
-elements.slashMenu.addEventListener("click", (event) => {
-  const option = event.target.closest(".slash-command-option");
-  if (option) {
-    runSlashCommand(Number(option.dataset.commandIndex));
-  }
-});
-elements.tableControls.addEventListener("mousedown", (event) => {
-  if (event.target.closest("button")) {
+    documentUi.focusSearchResult(1);
+  } else if (event.key === "ArrowUp") {
     event.preventDefault();
-  }
-});
-elements.tableActionsTrigger.addEventListener("click", () => {
-  const opening = elements.tableActionsMenu.hidden;
-  elements.tableActionsMenu.hidden = !opening;
-  elements.tableActionsTrigger.setAttribute("aria-expanded", String(opening));
-  if (opening) {
-    positionTableMenu();
-    elements.tableActionsMenu.querySelector("[role='menuitem']").focus();
-  }
-});
-elements.tableActionsMenu.addEventListener("click", (event) => {
-  const action = event.target.closest("[data-table-action]");
-  if (action) {
-    runTableAction(action.dataset.tableAction);
-  }
-});
-elements.tableActionsMenu.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
+    documentUi.focusSearchResult(-1);
+  } else if (event.key === "Enter") {
     event.preventDefault();
-    closeTableActionsMenu(true);
-    return;
-  }
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
-    return;
-  }
-  event.preventDefault();
-  const items = Array.from(elements.tableActionsMenu.querySelectorAll("[role='menuitem']"));
-  const currentIndex = items.indexOf(document.activeElement);
-  const offset = event.key === "ArrowDown" ? 1 : -1;
-  items[(currentIndex + offset + items.length) % items.length].focus();
-});
-for (const control of [elements.tableControls, elements.tableAddRow, elements.tableAddColumn]) {
-  control.addEventListener("pointerleave", (event) => {
-    if (
-      !elements.content.contains(event.relatedTarget)
-      && !elements.tableControls.contains(event.relatedTarget)
-      && !elements.tableAddRow.contains(event.relatedTarget)
-      && !elements.tableAddColumn.contains(event.relatedTarget)
-      && !elements.tableActionsMenu.contains(document.activeElement)
-    ) {
-      hideTableControls();
+    documentUi.openSearchResult();
+  } else if (event.key === "Escape") {
+    if (elements.search.value) {
+      elements.search.value = "";
+      documentUi.renderList();
+    } else {
+      elements.search.blur();
     }
-  });
+  }
+});
+elements.title.addEventListener("input", documentController.scheduleSave);
+const isMacPlatform = /Mac|iPhone|iPad/u.test(navigator.platform);
+const shortcutModifier = isMacPlatform ? "⌘" : "Ctrl+";
+elements.searchShortcut.textContent = `${isMacPlatform ? "⌘" : "Ctrl"} K`;
+elements.newButton.querySelector(".shortcut").textContent = `${shortcutModifier} N`;
+elements.welcome.querySelector(".keyboard-hint kbd").textContent = shortcutModifier;
+for (const [format, label] of [["bold", "Bold"], ["italic", "Italic"], ["underline", "Underline"], ["link", "Link"]]) {
+  const button = elements.toolbar.querySelector(`[data-format="${format}"]`);
+  button.title = `${label} (${shortcutModifier}${format === "link" ? "K" : format[0].toUpperCase()})`;
 }
-for (const button of [elements.tableAddRow, elements.tableAddColumn]) {
-  button.addEventListener("mousedown", (event) => event.preventDefault());
+try {
+  const widePage = window.localStorage.getItem("squareone.wide-page.v1") === "true";
+  elements.appShell.classList.toggle("wide-page", widePage);
+  elements.widePageToggle.setAttribute("aria-pressed", String(widePage));
+} catch (error) {
+  console.warn("Unable to load page width preference:", error);
 }
-elements.tableAddRow.addEventListener("click", () => {
-  if (!textEditor.chain().focus().addRowAfter().run()) {
-    showToast("Couldn't add a row. Select a table cell and try again.");
-  }
+editorUi = initializeEditorUi({
+  elements,
+  onContentChange: documentController.scheduleSave,
+  onResize: sidebarController.refreshSidebarWidth,
+  showToast,
 });
-elements.tableAddColumn.addEventListener("click", () => {
-  if (!textEditor.chain().focus().addColumnAfter().run()) {
-    showToast("Couldn't add a column. Select a table cell and try again.");
-  }
-});
-elements.blockControls.addEventListener("mousedown", (event) => {
-  if (!event.target.closest(".block-drag-button")) {
-    event.preventDefault();
-  }
-});
-elements.blockInsertButton.addEventListener("click", addBlockAfterCurrent);
-elements.blockDragButton.addEventListener("dragstart", (event) => {
-  if (!currentBlock) {
-    event.preventDefault();
-    return;
-  }
-  beginBlockDrag(currentBlock, event.dataTransfer);
-});
-elements.blockDragButton.addEventListener("dragend", () => finishBlockDrag(false));
-elements.blockDragButton.addEventListener("keydown", (event) => {
-  if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) {
-    return;
-  }
-  event.preventDefault();
-  moveBlockByDirection(currentBlock, event.key === "ArrowUp" ? -1 : 1);
-});
-elements.blockDragButton.addEventListener("pointerdown", (event) => {
-  if (event.pointerType === "mouse" || !currentBlock) {
-    return;
-  }
-  event.preventDefault();
-  touchBlockDrag = {
-    block: currentBlock,
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-  };
-  elements.blockDragButton.setPointerCapture(event.pointerId);
-});
-elements.blockDragButton.addEventListener("pointermove", (event) => {
-  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
-    return;
-  }
-  event.preventDefault();
-  startTouchBlockDrag(event);
-  updateBlockDropTarget(event.clientX, event.clientY);
-});
-elements.blockDragButton.addEventListener("pointerup", (event) => {
-  if (!touchBlockDrag || event.pointerId !== touchBlockDrag.pointerId) {
-    return;
-  }
-  updateBlockDropTarget(event.clientX, event.clientY);
-  finishBlockDrag(Boolean(activeBlockDrag));
-  touchBlockDrag = null;
-});
-elements.blockDragButton.addEventListener("pointercancel", () => {
-  if (touchBlockDrag) {
-    finishBlockDrag(false);
-    touchBlockDrag = null;
-  }
-});
-elements.blockControls.addEventListener("pointerleave", (event) => {
-  if (!elements.content.contains(event.relatedTarget) && !textEditor.isFocused) {
-    hideBlockControls();
-  }
-});
-elements.content.addEventListener("pointermove", (event) => {
-  const tableContext = getTableContextFromTarget(event.target);
-  if (tableContext) {
-    showTableControls(tableContext);
-  } else if (!elements.tableActionsMenu.contains(document.activeElement)) {
-    hideTableControls();
-  }
-  if (!activeBlockDrag && !touchBlockDrag) {
-    const block = getBlockFromTarget(event.target);
-    if (block) {
-      showBlockControls(block);
-    }
-  }
-});
-elements.content.addEventListener("pointerleave", (event) => {
-  if (
-    !elements.tableControls.contains(event.relatedTarget)
-    && !elements.tableAddRow.contains(event.relatedTarget)
-    && !elements.tableAddColumn.contains(event.relatedTarget)
-    && !elements.tableActionsMenu.contains(document.activeElement)
-  ) {
-    hideTableControls();
-  }
-  if (
-    !elements.blockControls.contains(event.relatedTarget)
-    && !textEditor.isFocused
-  ) {
-    hideBlockControls();
-  }
-});
-elements.editorWrap.addEventListener("dragover", (event) => {
-  if (!activeBlockDrag) {
-    return;
-  }
-  event.preventDefault();
-  updateBlockDropTarget(event.clientX, event.clientY);
-});
-elements.editorWrap.addEventListener("drop", (event) => {
-  if (!activeBlockDrag) {
-    return;
-  }
-  event.preventDefault();
-  finishBlockDrag(true);
-});
-textEditor = new Editor({
-  element: elements.content,
-  extensions: [
-    StarterKit.configure({
-      heading: { levels: [1, 2, 3] },
-    }),
-    Underline,
-    Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-    TextStyle,
-    Color.configure({ types: ["textStyle"] }),
-    Highlight.configure({ multicolor: true }),
-    Placeholder.configure({ placeholder: "Begin with a thought..." }),
-    TaskList,
-    TaskItem.configure({ nested: true }),
-    Callout,
-    Table.configure({
-      resizable: true,
-      cellMinWidth: 96,
-      lastColumnResizable: true,
-      allowTableNodeSelection: true,
-    }),
-    TableRow,
-    TableHeader,
-    TableCell,
-  ],
-  editorProps: {
-    attributes: {
-      class: "tiptap-content",
-      role: "textbox",
-      "aria-multiline": "true",
-      "aria-describedby": "block-move-help",
-      "aria-keyshortcuts": "Alt+ArrowUp Alt+ArrowDown Alt+Enter",
-      "data-placeholder": "Begin with a thought...",
-      spellcheck: "true",
-    },
-    handleKeyDown(_view, event) {
-      if (slashRange) {
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          moveSlashSelection(1);
-          return true;
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          moveSlashSelection(-1);
-          return true;
-        }
-        if (event.key === "Enter" && slashMatches.length > 0) {
-          event.preventDefault();
-          runSlashCommand(slashActiveIndex);
-          return true;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closeSlashMenu();
-          return true;
-        }
-      }
-      if (event.altKey && !event.metaKey && !event.ctrlKey
-          && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-        event.preventDefault();
-        moveBlockByDirection(getBlockAtSelection(), event.key === "ArrowUp" ? -1 : 1);
-        return true;
-      }
-      if (event.altKey && !event.metaKey && !event.ctrlKey && event.key === "Enter") {
-        event.preventDefault();
-        addBlockAfterCurrent();
-        return true;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter"
-          && getTableContextFromSelection()) {
-        event.preventDefault();
-        addParagraphAfterTable();
-        return true;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
-        if (textEditor.state.selection.empty && !textEditor.isActive("link")) {
-          return false;
-        }
-        event.preventDefault();
-        editLink();
-        return true;
-      }
-      return false;
-    },
-  },
-  onUpdate() {
-    updateWordCount();
-    scheduleSave();
-    syncSlashMenu();
-    if (textEditor.isFocused) {
-      showBlockControls(getBlockAtSelection());
-      showTableControls(getTableContextFromSelection());
-    }
-  },
-  onSelectionUpdate() {
-    updateFormattingToolbar();
-    syncSlashMenu();
-    if (textEditor.isFocused) {
-      showBlockControls(getBlockAtSelection());
-      showTableControls(getTableContextFromSelection());
-    }
-  },
-  onFocus() {
-    updateFormattingToolbar();
-    syncSlashMenu();
-    showBlockControls(getBlockAtSelection());
-    showTableControls(getTableContextFromSelection());
-  },
-  onBlur() {
-    window.setTimeout(() => {
-      if (!elements.toolbar.contains(document.activeElement)) {
-        hideFormattingToolbar();
-      }
-      if (!elements.slashMenu.contains(document.activeElement)) {
-        closeSlashMenu();
-      }
-      if (!elements.blockControls.contains(document.activeElement)) {
-        hideBlockControls();
-      }
-      if (
-        !elements.tableControls.contains(document.activeElement)
-        && !elements.tableAddRow.contains(document.activeElement)
-        && !elements.tableAddColumn.contains(document.activeElement)
-      ) {
-        hideTableControls();
-      }
-    }, 0);
-  },
-});
-window.addEventListener("resize", () => {
-  setSidebarWidth(sidebarWidth);
-  if (!elements.toolbar.hidden) {
-    positionFormattingToolbar();
-  }
-  if (!elements.slashMenu.hidden) {
-    positionSlashMenu();
-  }
-  positionBlockControls();
-  positionTableControls();
-});
-window.addEventListener("scroll", () => {
-  if (!elements.toolbar.hidden) {
-    positionFormattingToolbar();
-  }
-  if (!elements.slashMenu.hidden) {
-    positionSlashMenu();
-  }
-  positionBlockControls();
-  positionTableControls();
-}, true);
 
 document.addEventListener("keydown", (event) => {
+  if (document.querySelector("dialog[open]")) return;
   const modifier = event.metaKey || event.ctrlKey;
-  if (modifier && event.key.toLocaleLowerCase() === "n") {
+  const key = event.key.toLocaleLowerCase();
+  if (event.key === "Escape" && elements.appShell.classList.contains("focus-mode")) {
+    elements.appShell.classList.remove("focus-mode");
+    elements.focusToggle.setAttribute("aria-pressed", "false");
+    elements.focusToggle.textContent = "Focus";
+    preferencesController.update({ focusMode: false });
+    editorUi.editor.commands.focus();
     event.preventDefault();
-    void createDocument();
+    return;
+  }
+  if (event.key === "Escape" && elements.appShell.classList.contains("mobile-sidebar-open")) {
+    sidebarController.closeMobileSidebar();
+    event.preventDefault();
+    return;
+  }
+  if (event.key === "Escape" && !elements.accountMenuPanel.hidden) {
+    accountUi.closeMenu();
+    elements.accountMenuTrigger.focus();
+    event.preventDefault();
+    return;
+  }
+  if (event.key === "Escape") {
+    const openDetails = document.querySelector("details[open]");
+    if (openDetails) {
+      openDetails.open = false;
+      openDetails.querySelector(":scope > summary")?.focus();
+      event.preventDefault();
+      return;
+    }
+  }
+  if (modifier && (event.key === "\\" || (event.code === "Backslash" && !event.shiftKey))) {
+    event.preventDefault();
+    if (elements.appShell.classList.contains("focus-mode")) {
+      elements.focusToggle.click();
+      return;
+    }
+    sidebarController.cycleSidebarMode();
   } else if (
-    event.key === "/"
-    && document.activeElement !== elements.search
-    && !elements.content.contains(document.activeElement)
+    modifier
+    && key === "k"
+    && !elements.content.contains(event.target)
+    && !elements.accountDialog.contains(event.target)
   ) {
     event.preventDefault();
-    elements.search.focus();
-  } else if (event.key === "Escape" && document.activeElement === elements.search) {
-    elements.search.value = "";
-    renderList();
-    elements.search.blur();
+    if (elements.appShell.classList.contains("focus-mode")) {
+      elements.focusToggle.click();
+    }
+    sidebarController.focusSearch();
+    elements.search.select();
+  } else if (event.altKey && event.shiftKey && key === "f") {
+    event.preventDefault();
+    elements.focusToggle.click();
+  } else if (modifier && key === "n") {
+    event.preventDefault();
+    void documentController.createDocument();
   }
 });
 
-void initialize();
+await accountController.initialize();

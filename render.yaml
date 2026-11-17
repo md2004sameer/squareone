@@ -1,0 +1,24 @@
+# Use the existing Render service; keep Neon credentials in Render's environment.
+services:
+  - type: web
+    name: squareone
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/documents/health
+    autoDeployTrigger: 'off'
+    domains:
+      - docs.orbitbot.in
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: DATABASE_SCHEMA
+        value: squareone
+      - key: SPRING_SQL_INIT_MODE
+        value: never
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false

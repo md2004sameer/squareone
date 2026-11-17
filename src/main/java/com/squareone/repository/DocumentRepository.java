@@ -14,13 +14,37 @@ import com.squareone.model.Document;
 
 public interface DocumentRepository extends JpaRepository<Document, String> {
 
-    List<Document> findAllByOwnerUser_IdOrderByUpdatedAtDesc(String ownerUserId);
+    List<Document> findAllByWorkspaceIdOrderByUpdatedAtDesc(String workspaceId);
 
-    List<Document> findAllByGuestIdOrderByUpdatedAtDesc(String guestId);
+    @Modifying
+    @Query("update Document d set d.ownerUser = :owner, d.guestId = null, d.workspaceId = :workspaceId, d.rowVersion = d.rowVersion + 1 where d.guestId = :guestId")
+    int transferGuestWorkspace(@Param("guestId") String guestId, @Param("owner") AppUser owner, @Param("workspaceId") String workspaceId);
+
+    List<Document> findAllByOwnerUser_IdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
+
+    List<Document> findAllByGuestIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String guestId);
+
+    List<Document> findAllByOwnerUser_IdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String ownerUserId);
+
+    List<Document> findAllByGuestIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String guestId);
 
     Optional<Document> findByIdAndOwnerUser_Id(String id, String ownerUserId);
 
     Optional<Document> findByIdAndGuestId(String id, String guestId);
+
+    @Modifying
+    @Query("update Document document set document.parentId = null "
+            + "where document.parentId = :parentId and document.ownerUser.id = :ownerUserId")
+    int promoteChildrenOfUser(
+            @Param("parentId") String parentId,
+            @Param("ownerUserId") String ownerUserId);
+
+    @Modifying
+    @Query("update Document document set document.parentId = null "
+            + "where document.parentId = :parentId and document.guestId = :guestId")
+    int promoteChildrenOfGuest(
+            @Param("parentId") String parentId,
+            @Param("guestId") String guestId);
 
     @Modifying
     @Transactional

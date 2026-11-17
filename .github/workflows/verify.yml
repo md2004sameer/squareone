@@ -1,0 +1,70 @@
+name: Verify release
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm audit
+      - run: npm run build:editor
+      - run: ./gradlew test bootJar --no-daemon
+      - run: npm run test:persistence
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results
+          path: |
+            build/reports/tests/
+            test-results/
+      - run: docker build -t squareone:verified .
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: squareone_test
+          POSTGRES_USER: squareone
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U squareone -d squareone_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SQUAREONE_TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/squareone_test
+      SQUAREONE_TEST_DATABASE_USERNAME: squareone
+      SQUAREONE_TEST_DATABASE_PASSWORD: test-only-password
+      SQUAREONE_TEST_DATABASE_SCHEMA: squareone
+      SQUAREONE_TEST_PROFILE: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: ./gradlew test --tests '*LegacyMigrationTests' bootJar --no-daemon
+      - run: npm run test:persistence

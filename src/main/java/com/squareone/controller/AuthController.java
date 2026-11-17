@@ -39,14 +39,17 @@ public class AuthController {
     private static final String DEFAULT_AVATAR_COLOR = "#617459";
 
     private final AccountService accountService;
+    private final com.squareone.service.WorkspaceService workspaceService;
     private final GuestSessionService guestSessionService;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(
             AccountService accountService,
+            com.squareone.service.WorkspaceService workspaceService,
             GuestSessionService guestSessionService,
             SecurityContextRepository securityContextRepository) {
         this.accountService = accountService;
+        this.workspaceService = workspaceService;
         this.guestSessionService = guestSessionService;
         this.securityContextRepository = securityContextRepository;
     }
@@ -62,9 +65,12 @@ public class AuthController {
             HttpSession session) {
         if (principal == null) {
             String guestId = guestSessionService.getOrCreateGuestId(session);
-            return new SessionResponse(false, "Guest", null, "G", DEFAULT_AVATAR_COLOR, guestId);
+            workspaceService.resolve(com.squareone.service.DocumentOwner.guest(guestId));
+            return new SessionResponse(false, "Guest", null, "G", DEFAULT_AVATAR_COLOR, guestId, null, "Guest workspace");
         }
-        return SessionResponse.from(principal.user());
+        AppUser user = accountService.getUser(principal.userId());
+        var workspace = workspaceService.defaultForUser(user.getId());
+        return SessionResponse.from(user, workspace);
     }
 
     @PostMapping("/signup")
@@ -84,10 +90,10 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         AppUser updatedUser = accountService.updateProfile(
-                principal.user().getId(),
+                principal.userId(),
                 request.name(),
                 request.email(),
-                request.avatarColor() == null ? principal.user().getAvatarColor() : request.avatarColor());
+                request.avatarColor() == null ? accountService.getUser(principal.userId()).getAvatarColor() : request.avatarColor());
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         var context = SecurityContextHolder.createEmptyContext();
@@ -95,7 +101,7 @@ public class AuthController {
                 new AppUserDetails(updatedUser), null, authentication.getAuthorities()));
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
-        return ResponseEntity.ok(SessionResponse.from(updatedUser));
+        return ResponseEntity.ok(SessionResponse.from(updatedUser, workspaceService.defaultForUser(updatedUser.getId())));
     }
 
     @PutMapping("/password")
@@ -106,7 +112,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         accountService.changePassword(
-                principal.user().getId(), request.currentPassword(), request.newPassword());
+                principal.userId(), request.currentPassword(), request.newPassword());
         return ResponseEntity.noContent().build();
     }
 
@@ -167,16 +173,18 @@ public class AuthController {
             String email,
             String avatar,
             String avatarColor,
-            String workspaceId) {
+            String workspaceId,
+            String userId,
+            String workspaceName) {
 
-        private static SessionResponse from(AppUser user) {
+        private static SessionResponse from(AppUser user, com.squareone.model.Workspace workspace) {
             return new SessionResponse(
                     true,
                     user.getName(),
                     user.getEmail(),
                     initials(user.getName()),
                     user.getAvatarColor(),
-                    user.getId());
+                    workspace.getId(), user.getId(), workspace.getName());
         }
 
         static String initials(String name) {

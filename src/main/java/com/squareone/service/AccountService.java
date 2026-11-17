@@ -20,10 +20,15 @@ public class AccountService {
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final WorkspaceService workspaceService;
+    private final com.squareone.repository.UserPreferencesRepository preferences;
 
-    public AccountService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder) {
+    public AccountService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder,
+            WorkspaceService workspaceService, com.squareone.repository.UserPreferencesRepository preferences) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.workspaceService = workspaceService;
+        this.preferences = preferences;
     }
 
     @Transactional
@@ -35,8 +40,11 @@ public class AccountService {
         validatePasswordLength(password);
         String avatarColor = AVATAR_COLORS.get(Math.floorMod(normalizedEmail.hashCode(), AVATAR_COLORS.size()));
         try {
-            return appUserRepository.saveAndFlush(new AppUser(
+            AppUser user = appUserRepository.saveAndFlush(new AppUser(
                     name.strip(), normalizedEmail, passwordEncoder.encode(password), avatarColor));
+            workspaceService.defaultForUser(user.getId());
+            var settings = new com.squareone.model.UserPreferences(); settings.setUserId(user.getId()); preferences.save(settings);
+            return user;
         } catch (DataIntegrityViolationException exception) {
             throw new EmailAlreadyRegisteredException();
         }
@@ -53,6 +61,7 @@ public class AccountService {
         user.setName(name.strip());
         user.setEmail(normalizedEmail);
         user.setAvatarColor(avatarColor);
+        user.setUpdatedAt(System.currentTimeMillis());
         try {
             return appUserRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
@@ -68,10 +77,11 @@ public class AccountService {
         }
         validatePasswordLength(newPassword);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setUpdatedAt(System.currentTimeMillis());
         appUserRepository.save(user);
     }
 
-    private AppUser getUser(String userId) {
+    public AppUser getUser(String userId) {
         return appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
     }

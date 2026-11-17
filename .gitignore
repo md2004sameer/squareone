@@ -41,3 +41,8 @@ out/
 
 # Local H2 database files
 /data/
+
+# Frontend build and browser test tools
+node_modules/
+playwright-report/
+test-results/

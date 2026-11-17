@@ -30,6 +30,18 @@ public class AppUser {
     @Column(nullable = false)
     private long createdAt;
 
+    @Column(nullable = false)
+    private long updatedAt;
+
+    @Column(nullable = false, length = 32)
+    private String authProvider = "PASSWORD";
+
+    @Column(nullable = false, length = 24)
+    private String accountStatus = "ACTIVE";
+
+    @Column(length = 2048)
+    private String avatarRef;
+
     protected AppUser() {
     }
 
@@ -40,6 +52,7 @@ public class AppUser {
         this.passwordHash = passwordHash;
         this.avatarColor = avatarColor;
         this.createdAt = System.currentTimeMillis();
+        this.updatedAt = createdAt;
     }
 
     public String getId() {
@@ -81,4 +94,12 @@ public class AppUser {
     public long getCreatedAt() {
         return createdAt;
     }
+
+    public long getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(long updatedAt) { this.updatedAt = updatedAt; }
+    public String getAuthProvider() { return authProvider; }
+    public String getAccountStatus() { return accountStatus; }
+    public void setAccountStatus(String status) { this.accountStatus = status; }
+    public String getAvatarRef() { return avatarRef; }
+    public void setAvatarRef(String avatarRef) { this.avatarRef = avatarRef; }
 }

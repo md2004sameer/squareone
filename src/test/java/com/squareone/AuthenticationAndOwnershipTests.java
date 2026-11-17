@@ -25,6 +25,10 @@ import com.squareone.repository.AppUserRepository;
 import com.squareone.repository.DocumentRepository;
 
 @SpringBootTest(properties = {
+        "spring.config.import=",
+        "DATABASE_SCHEMA=PUBLIC",
+        "spring.datasource.username=sa", "spring.datasource.password=",
+        "spring.autoconfigure.exclude=org.springframework.boot.session.jdbc.autoconfigure.JdbcSessionAutoConfiguration",
         "spring.datasource.url=jdbc:h2:mem:squareone-auth-tests;DB_CLOSE_DELAY=-1"
 })
 @AutoConfigureMockMvc
@@ -49,6 +53,13 @@ class AuthenticationAndOwnershipTests {
         String email = uniqueEmail();
         MockHttpSession guestSession = createGuestSession();
         String documentId = createDocument(guestSession, "A guest note", "Guest notes are private.");
+        String trashedId = createDocument(guestSession, "Trashed guest note", "Recover after signup.");
+        mockMvc.perform(put("/api/documents/{id}", trashedId).session(guestSession).with(csrf())
+                        .contentType("application/json")
+                        .content("{\"title\":\"Trashed guest note\",\"content\":\"Recover after signup.\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/documents/{id}", trashedId).session(guestSession).with(csrf()))
+                .andExpect(status().isNoContent());
 
         mockMvc.perform(put("/api/documents/{id}", documentId)
                         .session(guestSession)
@@ -76,6 +87,12 @@ class AuthenticationAndOwnershipTests {
                 .andReturn();
         MockHttpSession accountSession = (MockHttpSession) loginResult.getRequest().getSession(false);
 
+        mockMvc.perform(get("/api/documents/trash").session(accountSession))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(trashedId));
+        mockMvc.perform(post("/api/documents/trash/{id}/restore", trashedId).session(accountSession).with(csrf()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content").value("Recover after signup."));
+        mockMvc.perform(delete("/api/documents/{id}", trashedId).session(accountSession).with(csrf()))
+                .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/auth/session").session(accountSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authenticated").value(true))
