@@ -11,6 +11,7 @@ export function createAccountController({
   showToast,
 }) {
   const { rekeyLocalDrafts, request } = documentStorage;
+  let submitting = false;
 
   function beginWorkspaceLoad() {
     documentController.clearWorkspaceState();
@@ -94,14 +95,27 @@ export function createAccountController({
 
   async function submitAccountForm(event) {
     event.preventDefault();
+    if (submitting) return;
+    submitting = true;
+    const submittedMode = accountUi.mode;
+    const submitLabel = elements.accountSubmit.textContent;
+    elements.accountSubmit.disabled = true;
+    elements.accountModeToggle.disabled = true;
+    elements.accountForm.setAttribute("aria-busy", "true");
+    elements.accountSubmit.textContent = {
+      login: "Logging in…",
+      signup: "Creating account…",
+      profile: "Saving profile…",
+      settings: "Updating password…",
+    }[submittedMode];
     elements.accountFormError.hidden = true;
     try {
-      if (accountUi.mode === "login") {
+      if (submittedMode === "login") {
         await authenticateAccount(
           elements.accountEmailInput.value.trim(),
           elements.accountPasswordInput.value,
         );
-      } else if (accountUi.mode === "signup") {
+      } else if (submittedMode === "signup") {
         if (!(await documentController.syncPendingChanges()) || !(await preferencesController.flush())) {
           throw new Error("Sync your pending changes before switching accounts. Use Retry sync when connected.");
         }
@@ -116,7 +130,7 @@ export function createAccountController({
           }),
         });
         await authenticateAccount(email, password);
-      } else if (accountUi.mode === "profile") {
+      } else if (submittedMode === "profile") {
         const profile = await request("/api/auth/profile", {
           method: "PUT",
           body: JSON.stringify({
@@ -127,10 +141,10 @@ export function createAccountController({
         });
         setCurrentUser(profile);
         accountUi.updateMenu();
-      await preferencesController.load();
+        await preferencesController.load();
         elements.accountDialog.close();
         showToast("Your profile was updated.");
-      } else if (accountUi.mode === "settings") {
+      } else if (submittedMode === "settings") {
         await request("/api/auth/password", {
           method: "PUT",
           body: JSON.stringify({
@@ -143,6 +157,12 @@ export function createAccountController({
       }
     } catch (error) {
       accountUi.showFormError(error.message || "That didn’t work. Please try again.");
+    } finally {
+      submitting = false;
+      elements.accountSubmit.disabled = false;
+      elements.accountModeToggle.disabled = false;
+      elements.accountForm.removeAttribute("aria-busy");
+      if (accountUi.mode === submittedMode) elements.accountSubmit.textContent = submitLabel;
     }
   }
 

@@ -3,28 +3,50 @@ export function createWorkspaceHome({ getDocuments, onOpenDocument, contentToPla
     const button = document.createElement("button");
     button.type = "button";
     button.className = "home-document-card";
-    button.setAttribute("aria-label", `Open document: ${entry.title?.trim() || "Untitled"}`);
+    button.dataset.documentId = entry.id;
     const title = document.createElement("strong");
-    title.textContent = `${entry.favorite ? "★ " : ""}${entry.title?.trim() || "Untitled"}`;
     const preview = document.createElement("span");
-    preview.textContent = contentToPlainText(entry.content || "").trim().slice(0, 140) || "A little room for your next thought.";
     const date = document.createElement("small");
-    date.textContent = `Edited ${new Date(entry.updatedAt).toLocaleDateString()}`;
     button.append(title, preview, date);
     button.addEventListener("click", () => onOpenDocument(entry.id));
     return button;
   }
 
+  function updateCard(button, entry) {
+    button.setAttribute("aria-label", `Open document: ${entry.title?.trim() || "Untitled"}`);
+    const values = [
+      `${entry.favorite ? "★ " : ""}${entry.title?.trim() || "Untitled"}`,
+      contentToPlainText(entry.content || "").trim().slice(0, 140) || "A little room for your next thought.",
+      `Edited ${new Date(entry.updatedAt).toLocaleDateString()}`,
+    ];
+    values.forEach((value, index) => {
+      if (button.children[index].textContent !== value) button.children[index].textContent = value;
+    });
+  }
+
   function renderCollection(id, entries, emptyMessage) {
     const list = document.querySelector(id);
-    list.replaceChildren();
     if (!entries.length) {
-      const empty = document.createElement("p");
-      empty.className = "home-empty-copy";
-      empty.textContent = emptyMessage;
-      list.append(empty);
+      if (!list.querySelector(".home-empty-copy")) {
+        const empty = document.createElement("p");
+        empty.className = "home-empty-copy";
+        empty.textContent = emptyMessage;
+        list.replaceChildren(empty);
+      }
+      return;
     }
-    for (const entry of entries) list.append(documentCard(entry));
+    const existing = new Map([...list.children].map((child) => [child.dataset.documentId, child]));
+    const visibleIds = new Set(entries.map((entry) => entry.id));
+    for (const child of [...list.children]) {
+      if (!visibleIds.has(child.dataset.documentId)) child.remove();
+    }
+    entries.forEach((entry, index) => {
+      const card = existing.get(entry.id) || documentCard(entry);
+      updateCard(card, entry);
+      // Keep the button in place during autosave, including between pointer down
+      // and pointer up, so a render cannot swallow the user's click.
+      if (list.children[index] !== card) list.insertBefore(card, list.children[index] || null);
+    });
   }
 
   return {

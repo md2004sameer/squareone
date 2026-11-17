@@ -106,7 +106,8 @@ export function createDocumentController({
       } catch (error) {
         if (error.status === 409) {
           conflictedDocumentIds.add(documentId);
-          rememberDraft(current);
+          const latest = getDocuments().find((entry) => entry.id === documentId);
+          if (latest) rememberDraft(latest);
           showToast("Another device saved changes. Your draft is safe here; resolve changes to continue syncing.");
         }
         if (!syncFailed && error.status !== 409) showToast(locallySavedIds.has(documentId)
@@ -130,6 +131,17 @@ export function createDocumentController({
     if (!activeDocumentId) return true;
     const synced = await saveDocument(activeDocumentId);
     return synced || locallySavedIds.has(activeDocumentId);
+  }
+
+  async function prepareNavigation() {
+    window.clearTimeout(saveTimer);
+    const activeDocumentId = getActiveDocumentId();
+    if (!activeDocumentId || !pendingDocumentIds.has(activeDocumentId)) return true;
+    if (locallySavedIds.has(activeDocumentId)) {
+      void saveDocument(activeDocumentId);
+      return true;
+    }
+    return flushSave();
   }
 
   async function syncPendingChanges() {
@@ -216,42 +228,56 @@ export function createDocumentController({
 
   async function openDocument(documentId) {
     const requestId = ++documentOpenRequest;
-    if (!(await flushSave())) {
+    if (!(await prepareNavigation()) || requestId !== documentOpenRequest) {
       return;
     }
-    let selectedDocument = getDocuments().find((entry) => entry.id === documentId);
+    const selectedDocument = getDocuments().find((entry) => entry.id === documentId);
     if (!selectedDocument) {
       showToast("Couldn't find that document. Please refresh and try again.");
       return;
     }
 
-    try {
-      const fetchedDocument = await request(`${API_URL}/${encodeURIComponent(documentId)}`);
-      if (requestId !== documentOpenRequest) {
-        return;
-      }
-      selectedDocument = restoreLocalEdits(fetchedDocument);
-      const documents = getDocuments();
-      const index = documents.findIndex((entry) => entry.id === documentId);
-      if (index !== -1) documents[index] = selectedDocument;
-      if (pendingDocumentIds.has(documentId) && !conflictedDocumentIds.has(documentId)) void saveDocument(documentId);
-    } catch (error) {
-      console.error("Unable to fetch document:", error);
-      showToast("Couldn't refresh this document. Showing its last loaded version.");
-    }
-
-    if (requestId !== documentOpenRequest) {
-      return;
-    }
+    // The workspace already contains the document body. Open it before refreshing
+    // so a slow database connection cannot block navigation.
     setActiveDocumentId(selectedDocument.id);
     documentUi.renderEditor();
     documentUi.renderList();
     refreshSaveStatus();
+    void refreshOpenedDocument(documentId, requestId);
+  }
+
+  async function refreshOpenedDocument(documentId, requestId) {
+    try {
+      const fetchedDocument = await request(`${API_URL}/${encodeURIComponent(documentId)}`);
+      if (requestId !== documentOpenRequest || getActiveDocumentId() !== documentId) {
+        return;
+      }
+      const documents = getDocuments();
+      const index = documents.findIndex((entry) => entry.id === documentId);
+      if (index === -1) return;
+      const latest = documents[index];
+      // A save may have completed since the GET took its snapshot.
+      if (fetchedDocument.revision < latest.revision || fetchedDocument.rowVersion < latest.rowVersion) return;
+      const refreshed = restoreLocalEdits(fetchedDocument);
+      documents[index] = refreshed;
+      const hasPendingEdits = pendingDocumentIds.has(documentId);
+      if (!hasPendingEdits && (latest.title !== refreshed.title || latest.content !== refreshed.content
+          || latest.coverRef !== refreshed.coverRef)) {
+        documentUi.renderEditor();
+      }
+      documentUi.renderList();
+      if (pendingDocumentIds.has(documentId) && !conflictedDocumentIds.has(documentId)) void saveDocument(documentId);
+      refreshSaveStatus();
+    } catch (error) {
+      if (requestId !== documentOpenRequest || getActiveDocumentId() !== documentId) return;
+      console.error("Unable to fetch document:", error);
+      showToast("Couldn't refresh this document. Showing its last loaded version.");
+    }
   }
 
   async function showHome() {
-    if (!(await flushSave())) return;
-    ++documentOpenRequest;
+    const requestId = ++documentOpenRequest;
+    if (!(await prepareNavigation()) || requestId !== documentOpenRequest) return;
     setActiveDocumentId(null);
     elements.appShell.classList.remove("focus-mode");
     elements.focusToggle.setAttribute("aria-pressed", "false");

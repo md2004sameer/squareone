@@ -332,3 +332,105 @@ test('conflicting edits can be recovered as a copy without overwriting server co
   expect(server.content).toContain('Other device body');
   await saved(page);
 });
+
+test('slow signup prevents duplicate submissions and login can be retried after a bad password', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#guest-signup').click();
+  const email = `auth-flow-${Date.now()}@example.test`;
+  const password = 'AuthFlowTestPass123!';
+  await page.locator('#account-name-input').fill('Auth flow tester');
+  await page.locator('#account-email-input').fill(email);
+  await page.locator('#account-password-input').fill(password);
+  let signupRequests = 0;
+  let releaseSignup;
+  const held = new Promise((resolve) => { releaseSignup = resolve; });
+  await page.route('**/api/auth/signup', async (route) => {
+    signupRequests += 1;
+    await held;
+    await route.continue();
+  });
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-submit')).toBeDisabled();
+  await expect(page.locator('#account-submit')).toHaveText('Creating account…');
+  await expect(page.locator('#account-mode-toggle')).toBeDisabled();
+  await expect(page.locator('#account-form')).toHaveAttribute('aria-busy', 'true');
+  await page.locator('#account-form').dispatchEvent('submit');
+  releaseSignup();
+  await expect(page.locator('#account-dialog')).not.toBeVisible();
+  expect(signupRequests).toBe(1);
+  await page.locator('#account-menu-trigger').click();
+  await page.locator('#account-logout').click();
+  await expect(page.locator('#guest-notice')).toBeVisible();
+  await page.locator('#guest-login').click();
+  await page.locator('#account-email-input').fill(email);
+  await page.locator('#account-password-input').fill('WrongPassword123!');
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-form-error')).toHaveText('Invalid email or password');
+  await expect(page.locator('#account-submit')).toBeEnabled();
+  await expect(page.locator('#account-submit')).toHaveText('Log in');
+  await page.locator('#account-password-input').fill(password);
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-dialog')).not.toBeVisible();
+  await expect(page.locator('#account-menu-name')).toHaveText('Auth flow tester');
+});
+
+test('recent cards open before refresh finishes and a delayed response cannot replace newer edits', async ({ page }) => {
+  await openWorkspace(page);
+  const entry = await createDocument(page, 'Open recent immediately', '<p>Previously saved content.</p>');
+  await page.reload();
+  let releaseRefresh;
+  const held = new Promise((resolve) => { releaseRefresh = resolve; });
+  await page.route(`**/api/documents/${entry.id}`, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.locator('#home-recent button').click();
+    await expect(page.locator('#editor')).toBeVisible({ timeout: 1000 });
+    await expect(page.locator('#title-input')).toHaveValue('Open recent immediately');
+    await page.locator('#editor .tiptap-content').fill('New edits made while refresh is pending.');
+    await saved(page);
+    const refreshed = page.waitForResponse((response) => response.url().endsWith(`/api/documents/${entry.id}`) && response.request().method() === 'GET');
+    releaseRefresh();
+    await (await refreshed).finished();
+    // Another save must use the latest revision, even after that older GET arrives.
+    await page.locator('#title-input').fill('Latest recent edits');
+    await saved(page);
+    const stored = await (await page.request.get(`/api/documents/${entry.id}`)).json();
+    expect(stored.title).toBe('Latest recent edits');
+    expect(stored.content).toContain('New edits made while refresh is pending.');
+    await expect(page.locator('#editor .tiptap-content')).toContainText('New edits made while refresh is pending.');
+  } finally { releaseRefresh(); }
+});
+
+test('a recent card remains clickable when a background save completes during the click', async ({ page }) => {
+  await openWorkspace(page);
+  const entry = await createDocument(page, 'Keep my recent edits', '<p>Earlier content.</p>');
+  await page.reload();
+  await page.locator('#home-recent button').click();
+  await expect(page.locator('#editor')).toBeVisible();
+  let releaseSave;
+  const held = new Promise((resolve) => { releaseSave = resolve; });
+  await page.route(`**/api/documents/${entry.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.locator('#editor .tiptap-content').fill('My recent edits are still syncing.');
+    await page.locator('#workspace-home').click();
+    await expect(page.locator('#welcome-state')).toBeVisible({ timeout: 1000 });
+    const card = page.locator('#home-recent button');
+    const bounds = await card.boundingBox();
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    releaseSave();
+    await saved(page);
+    await page.mouse.up();
+    await expect(page.locator('#editor')).toBeVisible({ timeout: 1000 });
+    await expect(page.locator('#editor .tiptap-content')).toContainText('My recent edits are still syncing.');
+  } finally { releaseSave(); }
+});
