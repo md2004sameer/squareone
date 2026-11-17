@@ -67,6 +67,140 @@ test('home opens, creates a document, and shows recent notes and favorites', asy
   await expect(page.locator('#home-favorites')).toContainText('My first note');
 });
 
+test('browser Back returns from a document to the workspace and Forward restores it', async ({ page }) => {
+  await page.route('**/previous-website', (route) => route.fulfill({
+    contentType: 'text/html', body: '<h1>Previous website</h1>',
+  }));
+  await page.goto('/previous-website');
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  await page.locator('#title-input').fill('Return to my workspace');
+  await page.locator('.tiptap-content').fill('Keep this note when I go back.');
+  await saved(page);
+
+  await page.goBack();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+  await expect(page.locator('#home-recent')).toContainText('Return to my workspace');
+  await page.goForward();
+  await expect(page.locator('#title-input')).toHaveValue('Return to my workspace');
+  await expect(page.locator('.tiptap-content')).toHaveText('Keep this note when I go back.');
+  await page.goBack();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Previous website' })).toBeVisible();
+});
+
+for (const width of [320, 1280]) {
+  test(`Back to workspace stays available in focus mode at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await openWorkspace(page);
+    await page.locator('#welcome-create').click();
+    await page.locator('.tiptap-content').fill('Back without leaving Squareone.');
+    await saved(page);
+    await page.locator('#focus-toggle').click();
+    const back = page.getByRole('button', { name: 'Back to workspace', exact: true });
+    await expect(back).toBeInViewport();
+    await back.click();
+    await expect(page.locator('#welcome-state')).toBeVisible();
+    await expect(page.locator('.app-shell')).not.toHaveClass(/focus-mode/);
+    await expect(back).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}
+
+test('browser Back and Forward preserve edits while a save is pending', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  await page.locator('.tiptap-content').fill('An earlier saved version.');
+  await saved(page);
+  const [entry] = await (await page.request.get('/api/documents')).json();
+  let releaseSave;
+  const held = new Promise((resolve) => { releaseSave = resolve; });
+  await page.route(`**/api/documents/${entry.id}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.locator('.tiptap-content').fill('My edits are still syncing.');
+    await page.goBack();
+    await expect(page.locator('#welcome-state')).toBeVisible({ timeout: 1000 });
+    await page.goForward();
+    await expect(page.locator('.tiptap-content')).toHaveText('My edits are still syncing.');
+    releaseSave();
+    await saved(page);
+    const stored = await (await page.request.get(`/api/documents/${entry.id}`)).json();
+    expect(stored.content).toContain('My edits are still syncing.');
+  } finally { releaseSave(); }
+});
+
+test('browser Back stays in the editor when edits cannot be saved anywhere', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  await page.locator('.tiptap-content').fill('A saved starting point.');
+  await saved(page);
+  await page.evaluate(() => {
+    window.originalStorageSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith('squareone.document-draft')) throw new DOMException('Storage full', 'QuotaExceededError');
+      return window.originalStorageSetItem.call(this, key, value);
+    };
+  });
+  await page.route('**/api/documents/*', (route) => route.request().method() === 'PUT' ? route.abort() : route.continue());
+  await page.locator('.tiptap-content').fill('Keep these unsaved edits open.');
+  await expect(page.locator('#save-status')).toHaveAttribute('data-state', 'error');
+  await page.goBack();
+  await expect(page.locator('.tiptap-content')).toHaveText('Keep these unsaved edits open.');
+  await expect.poll(() => page.evaluate(() => window.history.state?.squareoneView?.documentId)).toBeTruthy();
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalStorageSetItem; });
+  await page.unroute('**/api/documents/*');
+  await page.locator('#retry-sync').click();
+  await saved(page);
+  await page.goBack();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+});
+
+test('history skips an archived document and can still return to an earlier document', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  await page.locator('#title-input').fill('Earlier document');
+  await saved(page);
+  await page.locator('#new-document').click();
+  await expect(page.locator('#title-input')).toHaveValue('Untitled');
+  await page.locator('#title-input').fill('Archived document');
+  await saved(page);
+  await page.getByRole('button', { name: 'Open document: Archived document', exact: true }).hover();
+  await page.getByLabel('Actions for Archived document', { exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#title-input')).toHaveValue('Earlier document');
+});
+
+test('history cannot reopen an account document after logout', async ({ page }) => {
+  await openWorkspace(page);
+  await page.locator('#welcome-create').click();
+  await page.locator('.tiptap-content').fill('Private account writing.');
+  await saved(page);
+  await page.locator('#guest-signup').click();
+  await page.locator('#account-name-input').fill('Navigation tester');
+  await page.locator('#account-email-input').fill(`navigation-${Date.now()}@example.test`);
+  await page.locator('#account-password-input').fill('NavigationTestPass123!');
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-dialog')).not.toBeVisible();
+  await page.locator('#account-menu-trigger').click();
+  await page.locator('#account-logout').click();
+  await expect(page.locator('#home-summary')).toHaveText('0 documents in your space');
+  await page.goBack();
+  await expect(page.locator('#welcome-state')).toBeVisible();
+  await expect(page.locator('#home-summary')).toHaveText('0 documents in your space');
+  await page.goForward();
+  await expect(page.locator('#editor')).toBeHidden();
+  await expect(page.locator('#home-recent')).not.toContainText('Private account writing.');
+});
+
 test('local edits survive reload and sync on reconnect without false success', async ({ page }) => {
   await openWorkspace(page);
   const entry = await createDocument(page, 'Original');

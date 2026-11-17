@@ -668,6 +668,7 @@ export function createDocumentUi({
     editorUi.hideTableControls();
     elements.welcome.hidden = hasDocument;
     elements.editor.hidden = !hasDocument;
+    elements.workspaceBack.hidden = !hasDocument;
     elements.deleteButton.disabled = !hasDocument;
     elements.focusToggle.disabled = !hasDocument;
     elements.widePageToggle.disabled = !hasDocument;

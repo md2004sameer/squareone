@@ -1222,12 +1222,12 @@ button {
 .app-shell.focus-mode .sidebar,
 .app-shell.focus-mode .sidebar-resize-handle,
 .app-shell.focus-mode .document-outline-pane,
-.app-shell.focus-mode .topbar-leading {
+.app-shell.focus-mode .topbar-leading > :not(.workspace-back) {
   display: none;
 }
 
 .app-shell.focus-mode .topbar-actions {
-  width: 100%;
+  margin-left: auto;
   justify-content: flex-end;
 }
 

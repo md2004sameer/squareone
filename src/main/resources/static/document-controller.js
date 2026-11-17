@@ -229,12 +229,12 @@ export function createDocumentController({
   async function openDocument(documentId) {
     const requestId = ++documentOpenRequest;
     if (!(await prepareNavigation()) || requestId !== documentOpenRequest) {
-      return;
+      return false;
     }
     const selectedDocument = getDocuments().find((entry) => entry.id === documentId);
     if (!selectedDocument) {
       showToast("Couldn't find that document. Please refresh and try again.");
-      return;
+      return false;
     }
 
     // The workspace already contains the document body. Open it before refreshing
@@ -244,6 +244,7 @@ export function createDocumentController({
     documentUi.renderList();
     refreshSaveStatus();
     void refreshOpenedDocument(documentId, requestId);
+    return true;
   }
 
   async function refreshOpenedDocument(documentId, requestId) {
@@ -277,7 +278,7 @@ export function createDocumentController({
 
   async function showHome() {
     const requestId = ++documentOpenRequest;
-    if (!(await prepareNavigation()) || requestId !== documentOpenRequest) return;
+    if (!(await prepareNavigation()) || requestId !== documentOpenRequest) return false;
     setActiveDocumentId(null);
     elements.appShell.classList.remove("focus-mode");
     elements.focusToggle.setAttribute("aria-pressed", "false");
@@ -285,6 +286,7 @@ export function createDocumentController({
     documentUi.renderEditor();
     documentUi.renderList();
     refreshSaveStatus();
+    return true;
   }
 
   async function createDocument() {

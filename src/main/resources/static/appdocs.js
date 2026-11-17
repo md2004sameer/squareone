@@ -2,9 +2,9 @@ import { createPreferencesController } from "./preferences-controller.js?v=25";
 import { createAccountController } from "./account-controller.js?v=26";
 import { createAccountUi } from "./account-ui.js?v=25";
 import { contentToPlainText, editorContentFromStored } from "./document-content.js?v=25";
-import { createDocumentController } from "./document-controller.js?v=27";
+import { createDocumentController } from "./document-controller.js?v=30";
 import { createDocumentStorage } from "./document-storage.js?v=25";
-import { createDocumentUi } from "./document-ui.js?v=25";
+import { createDocumentUi } from "./document-ui.js?v=30";
 import { initializeEditorUi } from "./editor-ui.js?v=27";
 import { createSidebarController } from "./sidebar-controller.js?v=25";
 import { createThemeController } from "./theme-controller.js?v=25";
@@ -12,6 +12,7 @@ import { createTrashController } from "./trash-controller.js?v=25";
 import { createWorkspaceHome } from "./workspace-home.js?v=27";
 import { createArchiveController } from "./archive-controller.js?v=25";
 import { createDocumentDetails } from "./document-details.js?v=25";
+import { createWorkspaceNavigation } from "./workspace-navigation.js?v=30";
 
 const elements = {
   list: document.querySelector("#document-list"),
@@ -53,6 +54,7 @@ const elements = {
   tableAddRow: document.querySelector("#table-add-row"),
   tableAddColumn: document.querySelector("#table-add-column"),
   breadcrumbTrail: document.querySelector(".breadcrumb"),
+  workspaceBack: document.querySelector("#workspace-back"),
   date: document.querySelector("#document-date"),
   wordCount: document.querySelector("#word-count"),
   characterCount: document.querySelector("#character-count"),
@@ -110,6 +112,7 @@ let activeDocumentId = null;
 let toastTimer = null;
 let editorUi = null;
 let workspaceHome = null;
+let workspaceNavigation = null;
 let preferencesController = null;
 let currentUser = {
   authenticated: false,
@@ -153,7 +156,10 @@ const documentUi = createDocumentUi({
   onDocumentsChanged: () => workspaceHome?.render(),
   onGoHome: () => void documentController.showHome(),
   onPreferenceChange: (patch) => preferencesController?.update(patch),
-  onEditorStateChange: () => applyFocusMode(preferencesController?.settings.focusMode || false),
+  onEditorStateChange: () => {
+    applyFocusMode(preferencesController?.settings.focusMode || false);
+    workspaceNavigation?.record();
+  },
   onArchiveDocument: (id) => void documentController.archiveDocument(id),
   onReorderDocument: async (id, direction) => {
     if (await documentController.reorderDocument(id, direction)) preferencesController.update({ documentSort: "manual" });
@@ -241,10 +247,12 @@ workspaceHome = createWorkspaceHome({
   contentToPlainText,
   onOpenDocument: (id) => void documentController.openDocument(id),
 });
-document.querySelector("#workspace-home").addEventListener("click", () => {
-  void documentController.showHome();
-  sidebarController.closeMobileSidebar();
-});
+for (const button of [document.querySelector("#workspace-home"), elements.workspaceBack]) {
+  button.addEventListener("click", () => {
+    void documentController.showHome();
+    sidebarController.closeMobileSidebar();
+  });
+}
 
 const trashController = createTrashController({
   request: documentStorage.request,
@@ -495,4 +503,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+workspaceNavigation = createWorkspaceNavigation({
+  getActiveDocumentId: () => activeDocumentId,
+  getWorkspaceId: () => currentUser.workspaceId,
+  canOpenDocument: (id) => documents.some((entry) => entry.id === id),
+  navigate: async (id) => {
+    const navigated = await (id ? documentController.openDocument(id) : documentController.showHome());
+    if (navigated) sidebarController.closeMobileSidebar(false);
+    return navigated;
+  },
+});
 await accountController.initialize();
+if (elements.workspaceError.hidden) workspaceNavigation.initialize();
