@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+async function openNavigation(page) {
+  const toggle = page.locator('#sidebar-toggle');
+  if ((await page.viewportSize()).width <= 760) {
+    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+  } else {
+    while (await toggle.getAttribute('data-mode') !== 'expanded') await toggle.click();
+  }
+}
+
+
 let pageErrors;
 test.beforeEach(async ({ page }) => {
   pageErrors = [];
@@ -55,6 +65,7 @@ test('home opens, creates a document, and shows recent notes and favorites', asy
   await page.locator('#title-input').fill('My first note');
   await page.locator('.tiptap-content').fill('A thought to return to.');
   await saved(page);
+  await openNavigation(page);
   await page.locator('#workspace-home').click();
   await expect(page.locator('#home-summary')).toHaveText('1 document in your space');
   await expect(page.locator('#home-recent')).toContainText('My first note');
@@ -73,15 +84,22 @@ test('browser Back returns from a document to the workspace and Forward restores
   }));
   await page.goto('/previous-website');
   await openWorkspace(page);
+  await page.locator('#sidebar-toggle').click();
+  await expect(page.locator('.app-shell')).toHaveClass(/sidebar-compact/);
   await page.locator('#welcome-create').click();
   await page.locator('#title-input').fill('Return to my workspace');
   await page.locator('.tiptap-content').fill('Keep this note when I go back.');
   await saved(page);
 
+  await expect(page.locator('.sidebar')).toBeHidden();
+  await expect(page.locator('#sidebar-resize-handle')).toBeHidden();
   await page.goBack();
   await expect(page.locator('#welcome-state')).toBeVisible();
+  await expect(page.locator('.sidebar')).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveClass(/sidebar-compact/);
   await expect(page.locator('#home-recent')).toContainText('Return to my workspace');
   await page.goForward();
+  await expect(page.locator('.sidebar')).toBeHidden();
   await expect(page.locator('#title-input')).toHaveValue('Return to my workspace');
   await expect(page.locator('.tiptap-content')).toHaveText('Keep this note when I go back.');
   await page.goBack();
@@ -165,11 +183,14 @@ test('history skips an archived document and can still return to an earlier docu
   await page.locator('#welcome-create').click();
   await page.locator('#title-input').fill('Earlier document');
   await saved(page);
+  await openNavigation(page);
   await page.locator('#new-document').click();
   await expect(page.locator('#title-input')).toHaveValue('Untitled');
   await page.locator('#title-input').fill('Archived document');
   await saved(page);
+  await openNavigation(page);
   await page.getByRole('button', { name: 'Open document: Archived document', exact: true }).hover();
+  await openNavigation(page);
   await page.getByLabel('Actions for Archived document', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
   await expect(page.locator('#welcome-state')).toBeVisible();
@@ -184,12 +205,14 @@ test('history cannot reopen an account document after logout', async ({ page }) 
   await page.locator('#welcome-create').click();
   await page.locator('.tiptap-content').fill('Private account writing.');
   await saved(page);
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   await page.locator('#account-name-input').fill('Navigation tester');
   await page.locator('#account-email-input').fill(`navigation-${Date.now()}@example.test`);
   await page.locator('#account-password-input').fill('NavigationTestPass123!');
   await page.locator('#account-submit').click();
   await expect(page.locator('#account-dialog')).not.toBeVisible();
+  await openNavigation(page);
   await page.locator('#account-menu-trigger').click();
   await page.locator('#account-logout').click();
   await expect(page.locator('#home-summary')).toHaveText('0 documents in your space');
@@ -205,6 +228,7 @@ test('local edits survive reload and sync on reconnect without false success', a
   await openWorkspace(page);
   const entry = await createDocument(page, 'Original');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await page.route('**/api/documents/*', (route) => route.request().method() === 'PUT' ? route.abort() : route.continue());
   await page.locator('#title-input').fill('Unsynced draft');
@@ -213,6 +237,7 @@ test('local edits survive reload and sync on reconnect without false success', a
   await page.reload();
   await expect(page.locator('#workspace-loading')).toBeHidden();
   await expect(page.locator('#save-status')).toHaveAttribute('data-state', 'local');
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(page.locator('#title-input')).toHaveValue('Unsynced draft');
   await expect(page.locator('#save-status-text')).toContainText('Waiting to sync');
@@ -228,17 +253,21 @@ test('trash restores content and permanently deletes only after confirmation', a
   await openWorkspace(page);
   const entry = await createDocument(page, 'Recover me', '<p>A note worth keeping.</p>');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   page.on('dialog', (dialog) => dialog.accept());
   await page.locator('#delete-document').click();
   await expect(page.locator(`#document-tree-${entry.id}`)).toHaveCount(0);
+  await openNavigation(page);
   await page.locator('#open-trash').click();
   await page.getByRole('button', { name: 'Restore: Recover me', exact: true }).click();
   await expect(page.locator('#trash-list')).toContainText('Trash is empty');
   await page.locator('#trash-close').click();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(page.locator('.tiptap-content')).toContainText('A note worth keeping.');
   await page.locator('#delete-document').click();
+  await openNavigation(page);
   await page.locator('#open-trash').click();
   await page.getByRole('button', { name: 'Delete permanently: Recover me', exact: true }).click();
   await expect(page.locator('#trash-list')).toContainText('Trash is empty');
@@ -274,6 +303,7 @@ test('theme switching and persisted preferences never block startup', async ({ p
   await page.emulateMedia({ colorScheme: 'dark' });
   await openWorkspace(page);
   for (const mode of ['light', 'dark', 'system']) {
+    await openNavigation(page);
     await page.locator('#account-menu-trigger').click();
     await page.locator('#account-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', mode);
@@ -292,6 +322,7 @@ test('guest guidance explains storage and signup transfers notes and Trash', asy
   const trashed = await createDocument(page, 'Guest trash');
   await mutate(page, 'DELETE', `/api/documents/${trashed.id}`);
   await page.reload();
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   await expect(page.locator('#account-dialog-copy')).toContainText('including Trash');
   await page.locator('#account-name-input').fill('Workspace tester');
@@ -301,9 +332,11 @@ test('guest guidance explains storage and signup transfers notes and Trash', asy
   await expect(page.locator('#account-dialog')).not.toBeVisible();
   await expect(page.locator('#guest-notice')).not.toBeVisible();
   await expect(page.locator(`#document-tree-${active.id}`)).toBeVisible();
+  await openNavigation(page);
   await page.locator('#open-trash').click();
   await expect(page.locator('#trash-list')).toContainText('Guest trash');
   await page.locator('#trash-close').click();
+  await openNavigation(page);
   await page.locator('#account-menu-trigger').click();
   await page.locator('#account-logout').click();
   await expect(page.locator('#guest-notice')).toBeVisible();
@@ -315,10 +348,12 @@ test('account switching is blocked while server changes are unsynced', async ({ 
   await openWorkspace(page);
   const entry = await createDocument(page, 'Guest pending edits');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await page.route('**/api/documents/*', (route) => route.request().method() === 'PUT' ? route.abort() : route.continue());
   await page.locator('#title-input').fill('Only in this browser');
   await expect(page.locator('#save-status')).toHaveAttribute('data-state', 'local');
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   await page.locator('#account-name-input').fill('Workspace tester');
   await page.locator('#account-email-input').fill(`pending-${Date.now()}@example.test`);
@@ -334,14 +369,17 @@ test('workspace home and Trash work at mobile width', async ({ page }) => {
   await expect(page.locator('#welcome-create')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.locator('#sidebar-toggle').click();
+  await openNavigation(page);
   await page.locator('#open-trash').click();
   await expect(page.locator('#trash-dialog')).toBeVisible();
   await expect(page.locator('#trash-list')).toContainText('Trash is empty');
   await page.locator('#trash-close').click();
   await page.locator('#sidebar-toggle').click();
+  await openNavigation(page);
   await page.locator('#workspace-home').click();
   await expect(page.locator('#welcome-state')).toBeVisible();
   await page.locator('#sidebar-toggle').click();
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   await expect(page.locator('#account-name-input')).toBeEditable();
   await page.locator('#account-dialog-close').click();
@@ -423,6 +461,7 @@ test('an older save response cannot overwrite edits typed while it was pending',
   await openWorkspace(page);
   const entry = await createDocument(page, 'Initial note');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   let releaseFirstSave;
   const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
@@ -450,6 +489,7 @@ test('failed browser storage never claims local edits are saved', async ({ page 
   await openWorkspace(page);
   const entry = await createDocument(page, 'Storage verification');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
@@ -472,15 +512,19 @@ test('archived notes remain reachable and can be restored from Archive', async (
   await openWorkspace(page);
   const entry = await createDocument(page, 'Put away for later', '<p>Keep this archive body.</p>');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).hover();
+  await openNavigation(page);
   await page.getByLabel('Actions for Put away for later', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
   await expect(page.locator(`#document-tree-${entry.id}`)).toHaveCount(0);
+  await openNavigation(page);
   await page.locator('#open-archive').click();
   await expect(page.locator('#archive-list')).toContainText('Put away for later');
   await page.getByLabel('Unarchive: Put away for later', { exact: true }).click();
   await expect(page.locator('#archive-list')).toContainText('Archive is empty');
   await page.locator('#archive-close').click();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(page.locator('#editor .tiptap-content')).toContainText('Keep this archive body.');
 });
@@ -542,6 +586,7 @@ test('selection toolbar colors, highlights and links persist after reload', asyn
   await saved(page);
   const [entry] = await (await page.request.get('/api/documents')).json();
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com/toolbar');
   await expect(editor.locator('span')).toHaveCSS('color', 'rgb(212, 76, 71)');
@@ -566,6 +611,7 @@ test('rich formatting, version previews, restore and document details work toget
   const html = '<h1>Rich heading</h1><p><strong>Bold text</strong> <u>Underlined text</u> <a href="https://example.com">A link</a> <span style="color: #ff0000">Color text</span></p><table><tbody><tr><td><p>Cell one</p></td><td><p>Cell two</p></td></tr></tbody></table>';
   const entry = await createDocument(page, 'Original rich note', html);
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(page.locator('#editor h1')).toHaveText('Rich heading');
   await expect(page.locator('#editor strong')).toHaveText('Bold text');
@@ -590,6 +636,7 @@ test('rich formatting, version previews, restore and document details work toget
   await expect(page.locator('#document-details-dialog')).not.toBeVisible();
   await expect(page.locator(`#document-tree-${entry.id} .document-item-icon`)).toHaveText('🌿');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   await expect(page.locator('#editor strong')).toHaveText('Bold text');
   await expect(page.locator('#editor td')).toHaveCount(2);
@@ -599,6 +646,7 @@ test('conflicting edits can be recovered as a copy without overwriting server co
   await openWorkspace(page);
   const entry = await createDocument(page, 'Shared starting point', '<p>Original body</p>');
   await page.reload();
+  await openNavigation(page);
   await page.locator(`#document-tree-${entry.id}`).click();
   const current = await (await page.request.get(`/api/documents/${entry.id}`)).json();
   await mutate(page, 'PUT', `/api/documents/${entry.id}`, { title: 'Other device title', content: '<p>Other device body</p>', revision: current.revision });
@@ -617,6 +665,7 @@ test('conflicting edits can be recovered as a copy without overwriting server co
 
 test('slow signup prevents duplicate submissions and login can be retried after a bad password', async ({ page }) => {
   await openWorkspace(page);
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   const email = `auth-flow-${Date.now()}@example.test`;
   const password = 'AuthFlowTestPass123!';
@@ -640,6 +689,7 @@ test('slow signup prevents duplicate submissions and login can be retried after 
   releaseSignup();
   await expect(page.locator('#account-dialog')).not.toBeVisible();
   expect(signupRequests).toBe(1);
+  await openNavigation(page);
   await page.locator('#account-menu-trigger').click();
   await page.locator('#account-logout').click();
   await expect(page.locator('#guest-notice')).toBeVisible();
@@ -703,6 +753,7 @@ test('a recent card remains clickable when a background save completes during th
   });
   try {
     await page.locator('#editor .tiptap-content').fill('My recent edits are still syncing.');
+    await openNavigation(page);
     await page.locator('#workspace-home').click();
     await expect(page.locator('#welcome-state')).toBeVisible({ timeout: 1000 });
     const card = page.locator('#home-recent button');

@@ -9,6 +9,9 @@ export function createSidebarController(elements, onChange = () => {}) {
   let sidebarWidth = 260;
   let sidebarMode = "expanded";
   let mobileSidebarOpen = false;
+  let documentId = null;
+  let documentSidebarMode = "hidden";
+  const effectiveMode = () => documentId ? documentSidebarMode : sidebarMode;
 
   function isMobileViewport() {
     return window.matchMedia("(max-width: 760px)").matches;
@@ -25,15 +28,16 @@ export function createSidebarController(elements, onChange = () => {}) {
       return;
     }
 
-    const modeIndex = SIDEBAR_MODES.indexOf(sidebarMode);
+    const mode = effectiveMode();
+    const modeIndex = SIDEBAR_MODES.indexOf(mode);
     const nextMode = SIDEBAR_MODES[(modeIndex + 1) % SIDEBAR_MODES.length];
-    elements.sidebarToggle.setAttribute("aria-expanded", String(sidebarMode !== "hidden"));
+    elements.sidebarToggle.setAttribute("aria-expanded", String(mode !== "hidden"));
     elements.sidebarToggle.setAttribute(
       "aria-label",
-      `Sidebar ${sidebarMode}. Click for ${nextMode} mode.`,
+      `Sidebar ${mode}. Click for ${nextMode} mode.`,
     );
     elements.sidebarToggle.title =
-      `Sidebar ${sidebarMode} · click for ${nextMode} · Cmd/Ctrl+\\ to cycle modes`;
+      `Sidebar ${mode} · click for ${nextMode} · Cmd/Ctrl+\\ to cycle modes`;
   }
 
   function setMobileSidebarOpen(open, restoreFocus = true) {
@@ -59,7 +63,7 @@ export function createSidebarController(elements, onChange = () => {}) {
   function setSidebarWidth(width) {
     const clampedWidth = clampSidebarWidth(width);
     sidebarWidth = clampedWidth;
-    if (sidebarMode === "expanded") {
+    if (effectiveMode() === "expanded") {
       elements.appShell.style.setProperty("--sidebar-width", `${clampedWidth}px`);
     }
     elements.sidebarResizeHandle.setAttribute("aria-valuenow", String(clampedWidth));
@@ -70,7 +74,10 @@ export function createSidebarController(elements, onChange = () => {}) {
     if (!SIDEBAR_MODES.includes(mode)) {
       return;
     }
-    sidebarMode = mode;
+    if (documentId) {
+      if (persist) documentSidebarMode = mode;
+      mode = documentSidebarMode;
+    } else sidebarMode = mode;
     const modeWidth = mode === "compact" ? 56 : mode === "hidden" ? 0 : sidebarWidth;
 
     elements.appShell.classList.toggle("sidebar-compact", mode === "compact");
@@ -81,7 +88,7 @@ export function createSidebarController(elements, onChange = () => {}) {
     elements.sidebarToggle.dataset.mode = mode;
     updateToggleState();
 
-    if (persist) onChange({ sidebarMode: mode });
+    if (persist && !documentId) onChange({ sidebarMode: mode });
   }
 
   function cycleSidebarMode() {
@@ -89,7 +96,7 @@ export function createSidebarController(elements, onChange = () => {}) {
       setMobileSidebarOpen(!mobileSidebarOpen, mobileSidebarOpen);
       return;
     }
-    const currentIndex = SIDEBAR_MODES.indexOf(sidebarMode);
+    const currentIndex = SIDEBAR_MODES.indexOf(effectiveMode());
     setSidebarMode(SIDEBAR_MODES[(currentIndex + 1) % SIDEBAR_MODES.length]);
   }
 
@@ -108,7 +115,8 @@ export function createSidebarController(elements, onChange = () => {}) {
   function focusSearch() {
     if (isMobileViewport()) {
       setMobileSidebarOpen(true, false);
-    } else if (sidebarMode !== "expanded") {
+    } else if (effectiveMode() !== "expanded") {
+      if (documentId) documentSidebarMode = "expanded";
       setSidebarMode("expanded", false);
     }
     elements.search.focus();
@@ -209,8 +217,16 @@ export function createSidebarController(elements, onChange = () => {}) {
 
   return {
     applyPreferences(settings) {
+      sidebarMode = settings.sidebarMode;
       setSidebarWidth(settings.sidebarWidth);
       setSidebarMode(settings.sidebarMode, false);
+    },
+    setDocumentContext(id) {
+      if (documentId === id) return;
+      documentId = id;
+      documentSidebarMode = "hidden";
+      closeMobileSidebar(false);
+      setSidebarMode(sidebarMode, false);
     },
     cycleSidebarMode,
     closeMobileSidebar,

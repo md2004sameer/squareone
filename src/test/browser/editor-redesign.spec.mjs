@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+async function openNavigation(page) {
+  const toggle = page.locator('#sidebar-toggle');
+  if ((await page.viewportSize()).width <= 760) {
+    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+  } else {
+    while (await toggle.getAttribute('data-mode') !== 'expanded') await toggle.click();
+  }
+}
+
+
 let errors;
 test.beforeEach(async ({ page }) => {
   errors = [];
@@ -66,12 +76,14 @@ test('dark, light and system themes use neutral surfaces without altering docume
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(10, 10, 10)');
   await expect(page.locator('.topbar')).toHaveCSS('background-color', 'rgb(25, 25, 25)');
   for (const [theme, color] of [['light', 'rgb(247, 247, 244)'], ['dark', 'rgb(10, 10, 10)'], ['system', 'rgb(10, 10, 10)']]) {
+    await openNavigation(page);
     await page.locator('#account-menu-trigger').click();
     await page.locator('#account-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(page.locator('body')).toHaveCSS('background-color', color);
     await expect(page.locator('.tiptap-content span')).toHaveCSS('color', 'rgb(212, 76, 71)');
     await expect(page.locator('.tiptap-content mark')).toHaveCSS('background-color', 'rgb(254, 243, 199)');
+    await openNavigation(page);
     if (await page.locator('#account-theme').isVisible()) await page.locator('#account-menu-trigger').click();
   }
 });
@@ -207,7 +219,9 @@ test('dropdown open state, nested content, images and dates survive reload and d
   await editor.getByRole('button', { name: 'Expand dropdown', exact: true }).click();
   await expect(editor.locator('[data-type="detailsContent"]')).toContainText('Updated nested writing.');
   await saved(page);
+  await openNavigation(page);
   await page.getByRole('button', { name: 'Open document: Persistent blocks', exact: true }).hover();
+  await openNavigation(page);
   await page.getByLabel('Actions for Persistent blocks', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Duplicate', exact: true }).click();
   await expect(page.locator('#title-input')).toHaveValue('Persistent blocks (copy)');
@@ -247,6 +261,7 @@ test('new blocks retain content through history restoration and offline draft re
   expect(text).toContain('Project notes');
   expect(text).toContain('Offline nested writing.');
   expect(text).toContain('Architecture sketch (https://images.example.test/diagram.png)');
+  await openNavigation(page);
   await page.locator('#workspace-home').click();
   await page.locator('#search').fill('Architecture sketch');
   await expect(page.locator(`#document-tree-${entry.id}`)).toBeVisible();
@@ -285,6 +300,7 @@ test('toolbar follows the actual workspace, wide mode expands, and focus restore
   const normal = (await page.locator('#editor').boundingBox()).width;
   await page.locator('#wide-page-toggle').click();
   await expect.poll(async () => (await page.locator('#editor').boundingBox()).width).toBeGreaterThan(normal + 80);
+  await openNavigation(page);
   await page.getByRole('button', { name: 'Text style', exact: true }).click();
   await page.locator('#sidebar-resize-handle').focus();
   await page.keyboard.press('End');
@@ -399,6 +415,7 @@ test('table resizing, navigation, column actions and whole-table movement preser
 
 test('writing preferences persist without replacing the active editor or its undo history', async ({ page }) => {
   await note(page, '<p>Keep writing.</p>');
+  await openNavigation(page);
   await page.locator('#guest-signup').click();
   await page.locator('#account-name-input').fill('Writing preferences tester');
   await page.locator('#account-email-input').fill(`writing-${Date.now()}@example.test`);
@@ -409,6 +426,7 @@ test('writing preferences persist without replacing the active editor or its und
   await editor.fill('One continuous thought');
   await editor.evaluate(el => { window.originalWritingEditor = el; });
   await saved(page);
+  await openNavigation(page);
   await page.locator('#account-menu-trigger').click();
   await page.locator('#account-settings').click();
   await page.getByRole('combobox', { name: 'Font', exact: true }).selectOption('serif');

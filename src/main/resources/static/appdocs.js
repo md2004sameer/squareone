@@ -6,7 +6,7 @@ import { createDocumentController } from "./document-controller.js?v=30";
 import { createDocumentStorage } from "./document-storage.js?v=25";
 import { createDocumentUi } from "./document-ui.js?v=31";
 import { initializeEditorUi } from "./editor-ui.js?v=31";
-import { createSidebarController } from "./sidebar-controller.js?v=25";
+import { createSidebarController } from "./sidebar-controller.js?v=32";
 import { createThemeController } from "./theme-controller.js?v=25";
 import { createTrashController } from "./trash-controller.js?v=25";
 import { createWorkspaceHome } from "./workspace-home.js?v=27";
@@ -161,6 +161,7 @@ const documentUi = createDocumentUi({
   onGoHome: () => void documentController.showHome(),
   onPreferenceChange: (patch) => preferencesController?.update(patch),
   onEditorStateChange: () => {
+    sidebarController.setDocumentContext(activeDocumentId);
     applyFocusMode(preferencesController?.settings.focusMode || false);
     workspaceNavigation?.record();
     editorTitle.scheduleResize();
