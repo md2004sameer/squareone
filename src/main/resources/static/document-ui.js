@@ -160,7 +160,7 @@ export function createDocumentUi({
       elements.documentOutlineList.append(item);
     }
 
-    const hasHeadings = headings.length > 0;
+    const hasHeadings = headings.length >= 7;
     elements.documentOutlinePane.hidden = !hasHeadings;
     elements.appShell.classList.toggle("has-document-outline", hasHeadings);
     elements.appShell.style.setProperty("--outline-width", hasHeadings ? "250px" : "0px");

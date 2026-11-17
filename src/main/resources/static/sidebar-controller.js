@@ -222,6 +222,7 @@ export function createSidebarController(elements, onChange = () => {}) {
       setSidebarMode(settings.sidebarMode, false);
     },
     setDocumentContext(id) {
+      elements.sidebarToggle.hidden = Boolean(id);
       if (documentId === id) return;
       documentId = id;
       documentSidebarMode = "hidden";

@@ -3,9 +3,11 @@ import { test, expect } from '@playwright/test';
 async function openNavigation(page) {
   const toggle = page.locator('#sidebar-toggle');
   if ((await page.viewportSize()).width <= 760) {
-    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+    if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
   } else {
-    while (await toggle.getAttribute('data-mode') !== 'expanded') await toggle.click();
+    if (await toggle.isVisible()) {
+      while (await toggle.getAttribute('data-mode') !== 'expanded') await toggle.click();
+    }
   }
 }
 
@@ -288,6 +290,7 @@ test('dropdown insertion works from slash and toolbar, and whole-block reorderin
 test('toolbar follows the actual workspace, wide mode expands, and focus restores sidebar state', async ({ page }) => {
   await page.setViewportSize({ width: 1800, height: 1100 });
   await note(page, '<h2>An outline heading</h2><p>Some writing.</p>');
+  await expect(page.locator('#document-outline-pane')).toBeHidden();
   const dock = page.locator('#editor-dock');
   async function centered() {
     await expect.poll(async () => {
@@ -310,7 +313,7 @@ test('toolbar follows the actual workspace, wide mode expands, and focus restore
   const workspace = await page.locator('.workspace').boundingBox();
   expect(menu.x).toBeGreaterThanOrEqual(workspace.x);
   expect(menu.x + menu.width).toBeLessThanOrEqual(workspace.x + workspace.width);
-  await page.locator('#sidebar-toggle').click();
+  await page.keyboard.press('Control+Backslash');
   await expect(page.locator('.app-shell')).toHaveClass(/sidebar-compact/);
   await centered();
   await page.locator('#focus-toggle').click();
@@ -325,7 +328,8 @@ test('mobile viewport changes, drawers and dialogs keep floating controls clear 
   await page.setViewportSize({ width: 390, height: 844 });
   await note(page, '<p>Writing on a phone.</p>');
   const dock = page.locator('#editor-dock');
-  await page.locator('#sidebar-toggle').click();
+  await expect(page.locator('#sidebar-toggle')).toBeHidden();
+  await page.locator('#search-toggle').click();
   await expect(dock).toBeHidden();
   await page.locator('#sidebar-close').click();
   await expect(dock).toBeVisible();
