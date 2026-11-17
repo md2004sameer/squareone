@@ -49,3 +49,13 @@ tasks.named('test') {
 	useJUnitPlatform()
 	inputs.property('testDatabaseUrl', providers.environmentVariable('SQUAREONE_TEST_DATABASE_URL').orElse('h2'))
 }
+
+// Give IDE launches the same resolved runtime dependencies as bootRun.
+// Sync removes old versions when dependencies change.
+tasks.register('prepareJavaLaunch', Sync) {
+	group = 'ide'
+	description = 'Build classes and prepare runtime dependencies for VS Code Run/Debug.'
+	dependsOn tasks.named('classes')
+	from configurations.runtimeClasspath
+	into layout.buildDirectory.dir('vscode-runtime')
+}

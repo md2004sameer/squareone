@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Squareone (Gradle runtime)",
+      "request": "launch",
+      "mainClass": "com.squareone.SquareoneApplication",
+      "projectName": "squareone",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Squareone: prepare runtime",
+      "classPaths": [
+        "${workspaceFolder}/build/classes/java/main",
+        "${workspaceFolder}/build/resources/main",
+        "${workspaceFolder}/build/vscode-runtime/*"
+      ],
+      "sourcePaths": ["${workspaceFolder}/src/main/java"],
+      "console": "integratedTerminal",
+      "shortenCommandLine": "argfile"
+    }
+  ]
+}

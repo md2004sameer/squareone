@@ -58,6 +58,8 @@ mkdir -p data
 
 The app reads `.env` when present; otherwise the local H2 database is written to `./data/squareone`.
 
+In VS Code, select **Squareone (Gradle runtime)** in Run and Debug, then press **F5**. Its pre-launch task builds the application classes and copies Gradle's resolved runtime dependencies to `build/vscode-runtime`. This includes the PostgreSQL driver, Flyway database support, and JDBC sessions even if VS Code's imported Gradle model is stale. Stop any existing Squareone process on port 8080 before starting another instance.
+
 ## Checks and editor bundle
 
 Run backend checks and build the release with `./gradlew test bootJar`. Run restart and persistence checks with `npm run test:persistence` afterward.

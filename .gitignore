@@ -37,7 +37,9 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # Local H2 database files
 /data/

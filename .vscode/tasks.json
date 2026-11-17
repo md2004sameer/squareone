@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Squareone: prepare runtime",
+      "type": "process",
+      "command": "${workspaceFolder}/gradlew",
+      "windows": { "command": "${workspaceFolder}\\gradlew.bat" },
+      "args": ["prepareJavaLaunch", "--console=plain"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}
